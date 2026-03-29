@@ -44,13 +44,14 @@ async function main() {
   registry.register(memory);
   await memory.start();
 
-  // Agent loop
+  // Agent loop (verbose by default — see the agent think)
   const loop = new AgentLoop({
     bus,
     registry,
     gate,
     model,
     identity: config.identity,
+    verbose: true,
   });
 
   // CLI Channel

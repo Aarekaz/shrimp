@@ -10,6 +10,7 @@ export interface AgentLoopConfig {
   model: ModelAdapter;
   identity: { name: string; owner: string };
   maxIterations?: number;
+  verbose?: boolean;
 }
 
 export class AgentLoop {
@@ -19,6 +20,7 @@ export class AgentLoop {
   private model: ModelAdapter;
   private identity: { name: string; owner: string };
   private maxIterations: number;
+  private verbose: boolean;
   private conversationHistory: Message[] = [];
 
   constructor(config: AgentLoopConfig) {
@@ -28,6 +30,13 @@ export class AgentLoop {
     this.model = config.model;
     this.identity = config.identity;
     this.maxIterations = config.maxIterations ?? 10;
+    this.verbose = config.verbose ?? false;
+  }
+
+  private log(icon: string, msg: string): void {
+    if (this.verbose) {
+      console.log(`  ${icon} ${msg}`);
+    }
   }
 
   async handleMessage(userText: string): Promise<string> {
@@ -45,11 +54,17 @@ export class AgentLoop {
       ];
 
       const tools = this.registry.allTools();
+      this.log('🧠', `thinking... (iteration ${iterations}/${this.maxIterations})`);
       const response = await this.model.generate(messages, tools.length > 0 ? tools : undefined);
+      this.log('📊', `tokens: ${response.usage.inputTokens} in / ${response.usage.outputTokens} out`);
 
       if (!response.toolCalls || response.toolCalls.length === 0) {
         this.conversationHistory.push({ role: 'assistant', content: response.content });
         return response.content;
+      }
+
+      if (response.content) {
+        this.log('💭', `thought: "${response.content}"`);
       }
 
       this.conversationHistory.push({
@@ -59,7 +74,9 @@ export class AgentLoop {
       });
 
       for (const toolCall of response.toolCalls) {
+        this.log('🔧', `calling ${toolCall.name}(${JSON.stringify(toolCall.input)})`);
         const result = await this.executeTool(toolCall);
+        this.log('✅', `result: ${JSON.stringify(result)}`);
         this.conversationHistory.push({
           role: 'tool',
           content: JSON.stringify(result),
