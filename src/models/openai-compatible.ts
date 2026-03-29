@@ -1,6 +1,6 @@
 import type { ModelAdapter, ModelResponse, ModelChunk, Message, Tool, ToolCall } from '../core/types';
 
-export interface MiniMaxConfig {
+export interface OpenAICompatibleConfig {
   apiKey: string;
   model: string;
   baseUrl: string;
@@ -17,8 +17,8 @@ interface OpenAIMessage {
   tool_call_id?: string;
 }
 
-export class MiniMaxAdapter implements ModelAdapter {
-  constructor(private config: MiniMaxConfig) {}
+export class OpenAICompatibleAdapter implements ModelAdapter {
+  constructor(private config: OpenAICompatibleConfig) {}
 
   async generate(messages: Message[], tools?: Tool[]): Promise<ModelResponse> {
     const body: Record<string, unknown> = {
@@ -47,7 +47,7 @@ export class MiniMaxAdapter implements ModelAdapter {
     });
 
     if (!response.ok) {
-      throw new Error(`MiniMax API error: ${response.status} ${await response.text()}`);
+      throw new Error(`Model API error: ${response.status} ${await response.text()}`);
     }
 
     const data = await response.json() as any;
@@ -64,8 +64,8 @@ export class MiniMaxAdapter implements ModelAdapter {
       content: msg.content ?? '',
       toolCalls: toolCalls && toolCalls.length > 0 ? toolCalls : undefined,
       usage: {
-        inputTokens: data.usage.prompt_tokens,
-        outputTokens: data.usage.completion_tokens,
+        inputTokens: data.usage?.prompt_tokens ?? 0,
+        outputTokens: data.usage?.completion_tokens ?? 0,
       },
     };
   }

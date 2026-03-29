@@ -1,9 +1,9 @@
 import { describe, it, expect, mock, afterEach } from 'bun:test';
-import { MiniMaxAdapter } from '../../src/models/minimax';
+import { OpenAICompatibleAdapter } from '../../src/models/openai-compatible';
 
 const originalFetch = globalThis.fetch;
 
-describe('MiniMaxAdapter', () => {
+describe('OpenAICompatibleAdapter', () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;
   });
@@ -16,7 +16,7 @@ describe('MiniMaxAdapter', () => {
       }))
     ) as any;
 
-    const adapter = new MiniMaxAdapter({ apiKey: 'test-key', model: 'minimax-m2.7', baseUrl: 'https://api.minimax.chat/v1' });
+    const adapter = new OpenAICompatibleAdapter({ apiKey: 'test-key', model: 'gemini-2.5-flash', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai' });
     const result = await adapter.generate([{ role: 'user', content: 'Hello' }]);
     expect(result.content).toBe('Hello! I am Shrimp.');
     expect(result.usage.inputTokens).toBe(10);
@@ -37,7 +37,7 @@ describe('MiniMaxAdapter', () => {
       }))
     ) as any;
 
-    const adapter = new MiniMaxAdapter({ apiKey: 'test-key', model: 'minimax-m2.7', baseUrl: 'https://api.minimax.chat/v1' });
+    const adapter = new OpenAICompatibleAdapter({ apiKey: 'test-key', model: 'gemini-2.5-flash', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai' });
     const result = await adapter.generate([{ role: 'user', content: 'Remember my name' }]);
     expect(result.toolCalls).toHaveLength(1);
     expect(result.toolCalls![0].name).toBe('memory.store');
@@ -54,7 +54,7 @@ describe('MiniMaxAdapter', () => {
       }));
     }) as any;
 
-    const adapter = new MiniMaxAdapter({ apiKey: 'test-key', model: 'minimax-m2.7', baseUrl: 'https://api.minimax.chat/v1' });
+    const adapter = new OpenAICompatibleAdapter({ apiKey: 'test-key', model: 'gemini-2.5-flash', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai' });
     await adapter.generate(
       [{ role: 'user', content: 'test' }],
       [{
@@ -68,5 +68,19 @@ describe('MiniMaxAdapter', () => {
     expect(capturedBody.tools).toHaveLength(1);
     expect(capturedBody.tools[0].type).toBe('function');
     expect(capturedBody.tools[0].function.name).toBe('memory.store');
+  });
+
+  it('handles missing usage gracefully', async () => {
+    globalThis.fetch = mock(async () =>
+      new Response(JSON.stringify({
+        choices: [{ message: { content: 'hi' }, finish_reason: 'stop' }],
+      }))
+    ) as any;
+
+    const adapter = new OpenAICompatibleAdapter({ apiKey: 'test-key', model: 'some-model', baseUrl: 'http://localhost:11434/v1' });
+    const result = await adapter.generate([{ role: 'user', content: 'Hello' }]);
+    expect(result.content).toBe('hi');
+    expect(result.usage.inputTokens).toBe(0);
+    expect(result.usage.outputTokens).toBe(0);
   });
 });
