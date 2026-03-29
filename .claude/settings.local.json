@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(find ~/.claude -name *.jsonl)",
+      "Bash(cp:*)",
+      "Bash(git init:*)",
+      "Bash(bun add:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(bunx tsc:*)",
+      "Bash(bun test:*)",
+      "Bash(git rm:*)",
+      "Bash(timeout 15 bun run start)",
+      "Bash(gtimeout 30 bun run start)",
+      "Bash(curl -s https://openrouter.ai/api/v1/models)",
+      "Bash(curl:*)",
+      "Bash(python3 -m json.tool)",
+      "Bash(bun:*)"
+    ]
+  }
+}
