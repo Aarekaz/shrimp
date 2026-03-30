@@ -4,6 +4,7 @@ import { ApprovalGate } from './core/approval';
 import { AgentLoop } from './core/loop';
 import { OpenAICompatibleAdapter } from './models/openai-compatible';
 import { MemoryCapability } from './capabilities/memory/index';
+import { ComposioCapability } from './capabilities/composio/index';
 import { CLIChannel } from './capabilities/channels/cli';
 import { loadConfig } from './config/defaults';
 
@@ -43,6 +44,21 @@ async function main() {
   const memory = new MemoryCapability();
   registry.register(memory);
   await memory.start();
+
+  // Composio — load if API key is available
+  const composioKey = config.composio?.apiKey ?? process.env.COMPOSIO_API_KEY;
+  if (composioKey) {
+    const composio = new ComposioCapability({
+      apiKey: composioKey,
+      userId: config.composio?.userId ?? 'default',
+      toolkits: config.composio?.toolkits ?? process.env.SHRIMP_TOOLKITS?.split(','),
+      maxTools: config.composio?.maxTools ?? 20,
+    });
+    await composio.start();
+    if (composio.tools.length > 0) {
+      registry.register(composio);
+    }
+  }
 
   // Agent loop (verbose by default — see the agent think)
   const loop = new AgentLoop({

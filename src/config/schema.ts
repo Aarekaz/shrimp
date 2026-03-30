@@ -14,6 +14,12 @@ export interface ShrimpConfig {
     cli?: { enabled: boolean };
     telegram?: { token: string };
   };
+  composio?: {
+    apiKey: string;
+    userId?: string;
+    toolkits?: string[];
+    maxTools?: number;
+  };
   approval: {
     default: ApprovalLevel;
     overrides: Record<string, ApprovalLevel>;

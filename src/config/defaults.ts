@@ -83,6 +83,7 @@ export function loadConfig(overrides?: Partial<ShrimpConfig>): ShrimpConfig {
     model: { ...defaultConfig.model, ...overrides?.model },
     memory: { ...defaultConfig.memory, ...overrides?.memory },
     channels: { ...defaultConfig.channels, ...overrides?.channels },
+    composio: overrides?.composio ?? defaultConfig.composio,
     approval: { ...defaultConfig.approval, ...overrides?.approval },
     identity: { ...defaultConfig.identity, ...overrides?.identity },
   };
