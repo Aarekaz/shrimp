@@ -65,10 +65,13 @@ class SubAgent {
     return !hasRules;
   }
 
-  async run(task: string, allTools?: Tool[], pendingMessages?: () => string[]): Promise<string> {
+  async run(task: string, allTools?: Tool[], pendingMessages?: () => string[], parentPromptPrefix?: string): Promise<string> {
     const tools = allTools ? this.filterTools(allTools) : this.filterTools(this.tools);
+    const systemContent = parentPromptPrefix
+      ? `${parentPromptPrefix}\n\n---\nSub-agent instructions:\n${this.systemPrompt}`
+      : this.systemPrompt;
     const messages: Message[] = [
-      { role: 'system', content: this.systemPrompt },
+      { role: 'system', content: systemContent },
       { role: 'user', content: task },
     ];
 
@@ -178,11 +181,14 @@ export class AgentsCapability implements Capability {
           // Get parent tools for filtering (via context registry)
           const allTools = ctx?.registry.allTools();
 
+          const sharedPrefix = `You are a sub-agent of ${ctx?.identity.name}, working for ${ctx?.identity.owner}.`;
+
           // Fire and forget — runs in background
           const promise = agent.run(
             taskPrompt,
             allTools,
             () => this.taskManager.consumeMessages(agentTask.id),
+            sharedPrefix,
           );
 
           promise.then(result => {
@@ -227,8 +233,9 @@ export class AgentsCapability implements Capability {
           }
 
           const allTools = ctx?.registry.allTools();
+          const sharedPrefix = `You are a sub-agent of ${ctx?.identity.name}, working for ${ctx?.identity.owner}.`;
           try {
-            const result = await agent.run(taskPrompt, allTools);
+            const result = await agent.run(taskPrompt, allTools, undefined, sharedPrefix);
             return ok({ title: `Agent: ${agentName}`, output: { agent: agentName, result } });
           } catch (e: any) {
             return err({ code: 'AGENT_ERROR', message: `Agent failed: ${e.message}`, retryable: true });

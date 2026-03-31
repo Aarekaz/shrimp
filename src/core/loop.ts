@@ -345,6 +345,10 @@ Guidelines:
     this.cachedToolCount = -1;
   }
 
+  getSystemPrompt(): string {
+    return this.buildSystemPrompt();
+  }
+
   private truncateToolOutput(output: unknown): string {
     const str = JSON.stringify(output);
     if (str.length <= MAX_TOOL_OUTPUT_CHARS) return str;
