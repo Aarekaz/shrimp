@@ -4,7 +4,9 @@ import { ApprovalGate } from './core/approval';
 import { AgentLoop } from './core/loop';
 import { OpenAICompatibleAdapter } from './models/openai-compatible';
 import { MemoryCapability } from './capabilities/memory/index';
+import { SuperMemoryCapability } from './capabilities/memory/supermemory';
 import { ComposioCapability } from './capabilities/composio/index';
+import { ComputerCapability } from './capabilities/computer/index';
 import { CLIChannel } from './capabilities/channels/cli';
 import { loadConfig } from './config/defaults';
 
@@ -40,10 +42,21 @@ async function main() {
     baseUrl: config.model.baseUrl ?? '',
   });
 
-  // Capabilities
-  const memory = new MemoryCapability();
-  registry.register(memory);
-  await memory.start();
+  // Memory — use SuperMemory if API key available, otherwise fall back to in-memory
+  const supermemoryKey = process.env.SUPERMEMORY_API_KEY;
+  if (supermemoryKey) {
+    const smem = new SuperMemoryCapability({
+      apiKey: supermemoryKey,
+      userId: config.identity.owner,
+    });
+    registry.register(smem);
+    await smem.start();
+  } else {
+    const memory = new MemoryCapability();
+    registry.register(memory);
+    await memory.start();
+    console.log('  🧠 Using in-memory storage (set SUPERMEMORY_API_KEY for persistent memory)');
+  }
 
   // Composio — load if API key is available
   const composioKey = config.composio?.apiKey ?? process.env.COMPOSIO_API_KEY;
@@ -57,6 +70,16 @@ async function main() {
     await composio.start();
     if (composio.tools.length > 0) {
       registry.register(composio);
+    }
+  }
+
+  // Computer — connect to Open Computer Use if URL is set
+  const computerUrl = process.env.COMPUTER_URL;
+  if (computerUrl) {
+    const computer = new ComputerCapability({ baseUrl: computerUrl });
+    await computer.start();
+    if (computer.tools.length > 0) {
+      registry.register(computer);
     }
   }
 
