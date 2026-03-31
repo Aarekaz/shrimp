@@ -2,14 +2,15 @@ import { z } from 'zod';
 import type { Capability, Tool, MemoryEntry } from '../../core/types';
 import { ok } from '../../core/types';
 import { WorkingMemory } from './working';
+import { SQLiteMemoryStore } from './sqlite-store';
 
 export class MemoryCapability implements Capability {
   name = 'memory';
   description = 'Store and recall facts, episodes, and procedures';
-  readonly memory: WorkingMemory;
+  private store: WorkingMemory | SQLiteMemoryStore;
 
-  constructor() {
-    this.memory = new WorkingMemory();
+  constructor(dbPath?: string) {
+    this.store = dbPath ? new SQLiteMemoryStore(dbPath) : new WorkingMemory();
   }
 
   get tools(): Tool[] {
@@ -30,7 +31,7 @@ export class MemoryCapability implements Capability {
             content: input.content as string,
             timestamp: new Date(),
           };
-          await this.memory.store(entry);
+          await this.store.store(entry);
           return ok({ title: 'Memory stored', output: { stored: entry.id } });
         },
       },
@@ -43,7 +44,7 @@ export class MemoryCapability implements Capability {
         }),
         approvalLevel: 'auto' as const,
         handler: async (input: Record<string, unknown>) => {
-          const results = await this.memory.recall(input.query as string);
+          const results = await this.store.recall(input.query as string);
           if (results.length === 0) {
             return ok({ title: 'Memory recall', output: { results: [], message: 'No matching memories found.' } });
           }
@@ -62,7 +63,7 @@ export class MemoryCapability implements Capability {
         }),
         approvalLevel: 'auto' as const,
         handler: async (input: Record<string, unknown>) => {
-          await this.memory.forget(input.id as string);
+          await this.store.forget(input.id as string);
           return ok({ title: 'Memory forgotten', output: { forgotten: true } });
         },
       },

@@ -62,10 +62,10 @@ export async function createShrimpServer(): Promise<ShrimpServer> {
     registry.register(smem);
     await smem.start();
   } else {
-    const memory = new MemoryCapability();
+    const memory = new MemoryCapability('./data/memory.db');
     registry.register(memory);
     await memory.start();
-    console.log('  🧠 Using in-memory storage (set SUPERMEMORY_API_KEY for persistent memory)');
+    console.log('  🧠 Persistent memory: ./data/memory.db');
   }
 
   // Composio — load if API key is available
