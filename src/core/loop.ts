@@ -20,6 +20,7 @@ export interface AgentLoopConfig {
   verbose?: boolean;
   sessionStore?: SessionStore;
   maxContextTokens?: number;
+  coordinatorMode?: boolean;
 }
 
 export class AgentLoop {
@@ -37,6 +38,8 @@ export class AgentLoop {
   private contextManager: ContextManager;
   readonly costTracker: CostTracker;
 
+  private coordinatorMode: boolean;
+
   // Memoized system prompt
   private cachedSystemPrompt: string | null = null;
   private cachedToolCount: number = -1;
@@ -53,6 +56,7 @@ export class AgentLoop {
     this.sessionStore = config.sessionStore;
     this.contextManager = new ContextManager({ maxTokens: config.maxContextTokens ?? 50000 });
     this.costTracker = new CostTracker();
+    this.coordinatorMode = config.coordinatorMode ?? false;
     if (this.sessionStore) {
       const session = this.sessionStore.create(`Session — ${new Date().toLocaleString()}`);
       this.sessionId = session.id;
@@ -264,7 +268,45 @@ export class AgentLoop {
     }
   }
 
+  private buildCoordinatorPrompt(): string {
+    const tools = this.registry.allTools();
+    const toolDescriptions = tools
+      .map(t => `- ${t.name}: ${t.description}`)
+      .join('\n');
+
+    return `You are ${this.identity.name} in COORDINATOR mode for ${this.identity.owner}.
+
+You are an orchestrator. You do NOT execute tasks yourself. Instead, you:
+1. Break complex tasks into sub-tasks
+2. Spawn background agents using agents.spawn
+3. Monitor progress using agents.tasks
+4. Send follow-up instructions using agents.send
+5. Synthesize results when agents complete
+
+Available tools:
+${toolDescriptions}
+
+Rules:
+- ALWAYS use agents.spawn for work (background), not agents.delegate (blocking)
+- Check agents.tasks to monitor what's running and what's done
+- When an agent completes, synthesize its result for the user
+- You can run multiple agents in parallel for speed
+- Use agents.send to redirect or refine a running agent's task
+- For memory operations, delegate to an agent — don't call memory tools directly`;
+  }
+
   private buildSystemPrompt(): string {
+    if (this.coordinatorMode) {
+      // Don't cache coordinator prompt separately — it changes with tools too
+      const currentToolCount = this.registry.allTools().length;
+      if (this.cachedSystemPrompt && this.cachedToolCount === currentToolCount) {
+        return this.cachedSystemPrompt;
+      }
+      this.cachedSystemPrompt = this.buildCoordinatorPrompt();
+      this.cachedToolCount = currentToolCount;
+      return this.cachedSystemPrompt;
+    }
+
     const currentToolCount = this.registry.allTools().length;
     if (this.cachedSystemPrompt && this.cachedToolCount === currentToolCount) {
       return this.cachedSystemPrompt;

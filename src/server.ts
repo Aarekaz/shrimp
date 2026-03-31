@@ -142,7 +142,12 @@ export async function createShrimpServer(): Promise<ShrimpServer> {
     identity: config.identity,
     verbose: true,
     sessionStore,
+    coordinatorMode: process.env.SHRIMP_COORDINATOR === 'true',
   });
+
+  if (process.env.SHRIMP_COORDINATOR === 'true') {
+    console.log('  🎯 Coordinator mode: ON (orchestrator-only)');
+  }
 
   // Dashboard — web UI
   const dashboardPort = parseInt(process.env.SHRIMP_DASHBOARD_PORT ?? '3737');
