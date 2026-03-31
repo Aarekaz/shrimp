@@ -23,9 +23,9 @@ Things we saw in the Claude Code architecture that would make Shrimp better.
 ## Core improvements
 
 - [ ] **Telegram adapter** — talk to Shrimp from your phone
-- [ ] **Scheduler/heartbeat** — "check X every hour", "remind me at 5pm", event-driven cron
+- [x] **Scheduler/heartbeat** — scheduler.set / scheduler.remind / scheduler.list / scheduler.cancel (done)
 - [ ] **AgentMail** — Shrimp gets its own email inbox, agent-to-agent via email
-- [ ] **Persistent local memory (SQLite)** — no external API, local vector search with vectra
+- [x] **Persistent local memory (SQLite)** — SQLiteMemoryStore with TF-IDF search (done)
 - [x] **Streaming responses** — words appear as they arrive (done)
 - [x] **Zod tool schemas** — type-safe tool definitions (done)
 - [x] **Structured ToolResult** — title, output, metadata (done)
@@ -40,7 +40,10 @@ Things we saw in the Claude Code architecture that would make Shrimp better.
 - [x] **SuperMemory** — persistent semantic memory (done)
 - [x] **Open Computer Use** — browser, terminal, desktop (done)
 - [x] **Multi-agent delegation** — researcher, writer, coder, planner (done)
-- [ ] **MCP client** — connect to any MCP server as a capability
+- [x] **MCP client** — connect to any MCP server via SHRIMP_MCP_SERVERS env (done)
+- [x] **Session resume** — SHRIMP_RESUME_SESSION=id or /resume in CLI (done)
+- [x] **Prompt caching** — shared prefix across parent and sub-agents (done)
+- [x] **Self-learning** — ProcedureStore captures 3+ tool patterns as reusable procedures (done)
 - [ ] **Browser capability (Playwright)** — built-in, no Open Computer Use dependency
 - [ ] **Calendar integration** — Google Calendar via Composio or direct API
 - [ ] **Payments** — Stripe or virtual card for agent purchases
