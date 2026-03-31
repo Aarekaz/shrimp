@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { serveStatic } from 'hono/bun';
-import { streamSSE } from 'hono/streaming';
+import { streamSSE, stream } from 'hono/streaming';
 import type { ShrimpEventBus } from '../core/events';
 import type { CapabilityRegistry } from '../core/registry';
 import type { AgentLoop } from '../core/loop';
@@ -34,7 +34,7 @@ export function createDashboard(config: DashboardConfig) {
       // Subscribe to all agent events
       const events = [
         'agent:thinking', 'agent:tool-call', 'agent:tool-result',
-        'agent:response', 'agent:error', 'channel:message',
+        'agent:response', 'agent:chunk', 'agent:error', 'channel:message',
         'memory:fact-updated',
       ] as const;
 
@@ -74,7 +74,7 @@ export function createDashboard(config: DashboardConfig) {
     return c.json(caps);
   });
 
-  // --- REST: send a message (so you can chat from the dashboard) ---
+  // --- Streaming chat endpoint ---
   app.post('/api/chat', async (c) => {
     const { message } = await c.req.json();
     if (!message || typeof message !== 'string') {
@@ -83,12 +83,16 @@ export function createDashboard(config: DashboardConfig) {
 
     bus.emit('channel:message', { channel: 'dashboard', from: 'user', text: message });
 
-    try {
-      const response = await loop.handleMessage(message);
-      return c.json({ response });
-    } catch (e: any) {
-      return c.json({ error: e.message }, 500);
-    }
+    return stream(c, async (s) => {
+      try {
+        for await (const chunk of loop.handleMessageStreaming(message)) {
+          await s.write(chunk);
+          bus.emit('agent:chunk', { delta: chunk });
+        }
+      } catch (e: any) {
+        await s.write(`\n\nError: ${e.message}`);
+      }
+    });
   });
 
   // --- REST: session list ---

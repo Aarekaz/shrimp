@@ -175,6 +175,84 @@ Guidelines:
 - When you have a final answer, respond with text — don't call tools unnecessarily.`;
   }
 
+  async *handleMessageStreaming(userText: string): AsyncGenerator<string> {
+    this.persistMessage({ role: 'user', content: userText });
+
+    const systemPrompt = this.buildSystemPrompt();
+    let iterations = 0;
+
+    while (iterations < this.maxIterations) {
+      iterations++;
+
+      const fittedHistory = this.contextManager.fit(this.conversationHistory);
+      const messages: Message[] = [
+        { role: 'system', content: systemPrompt },
+        ...fittedHistory,
+      ];
+
+      const llmTools = this.registry.allToolsForLLM();
+      this.log('🧠', `thinking... (iteration ${iterations}/${this.maxIterations})`);
+      this.bus.emit('agent:thinking', { iteration: iterations, maxIterations: this.maxIterations });
+
+      // Collect stream into content + tool calls
+      let content = '';
+      const toolCallBuffers = new Map<number, { id: string; name: string; args: string }>();
+
+      for await (const chunk of this.model.stream(messages, llmTools.length > 0 ? llmTools : undefined)) {
+        if (chunk.delta) {
+          content += chunk.delta;
+          yield chunk.delta; // Stream to caller
+        }
+
+        if (chunk.toolCallDelta) {
+          const idx = 0; // most APIs send index in the delta, default to 0
+          const existing = toolCallBuffers.get(idx) ?? { id: '', name: '', args: '' };
+          if (chunk.toolCallDelta.id) existing.id = chunk.toolCallDelta.id;
+          if (chunk.toolCallDelta.name) existing.name = chunk.toolCallDelta.name;
+          if (chunk.toolCallDelta.inputDelta) existing.args += chunk.toolCallDelta.inputDelta;
+          toolCallBuffers.set(idx, existing);
+        }
+      }
+
+      // Convert buffered tool calls
+      const toolCalls: ToolCall[] = [];
+      for (const [, buf] of toolCallBuffers) {
+        if (buf.name) {
+          try {
+            toolCalls.push({ id: buf.id || crypto.randomUUID(), name: buf.name, input: JSON.parse(buf.args || '{}') });
+          } catch {
+            toolCalls.push({ id: buf.id || crypto.randomUUID(), name: buf.name, input: {} });
+          }
+        }
+      }
+
+      if (toolCalls.length === 0) {
+        this.persistMessage({ role: 'assistant', content });
+        this.bus.emit('agent:response', { content, tokensIn: 0, tokensOut: 0 });
+        return;
+      }
+
+      // Tool calls found — stop streaming text, execute tools, loop
+      yield '\n'; // visual separator before tool execution
+      this.persistMessage({ role: 'assistant', content, toolCalls });
+
+      for (const toolCall of toolCalls) {
+        this.log('🔧', `calling ${toolCall.name}(${JSON.stringify(toolCall.input)})`);
+        this.bus.emit('agent:tool-call', { toolName: toolCall.name, input: toolCall.input });
+        const start = Date.now();
+        const result = await this.executeTool(toolCall);
+        const durationMs = Date.now() - start;
+        this.log('✅', `result: ${JSON.stringify(result)}`);
+        this.bus.emit('agent:tool-result', { toolName: toolCall.name, result, durationMs });
+        this.persistMessage({ role: 'tool', content: JSON.stringify(result), toolCallId: toolCall.id });
+      }
+    }
+
+    const limitMsg = `I reached my reasoning limit (${this.maxIterations} iterations).`;
+    this.persistMessage({ role: 'assistant', content: limitMsg });
+    yield limitMsg;
+  }
+
   getHistory(): Message[] {
     return this.conversationHistory;
   }

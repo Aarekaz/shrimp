@@ -10,8 +10,12 @@ async function main() {
   cli.onMessage(async (msg) => {
     bus.emit('channel:message', { channel: 'cli', from: 'user', text: msg.text });
     try {
-      const response = await loop.handleMessage(msg.text);
-      await cli.send(response);
+      process.stdout.write('\n🦐 Shrimp: ');
+      for await (const chunk of loop.handleMessageStreaming(msg.text)) {
+        process.stdout.write(chunk);
+        bus.emit('agent:chunk', { delta: chunk });
+      }
+      process.stdout.write('\n');
     } catch (e: any) {
       await cli.send(`Error: ${e.message}`);
     }

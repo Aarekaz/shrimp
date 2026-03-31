@@ -15,6 +15,7 @@ export interface EventMap {
   'agent:tool-call': { toolName: string; input: Record<string, unknown> };
   'agent:tool-result': { toolName: string; result: unknown; durationMs: number };
   'agent:response': { content: string; tokensIn: number; tokensOut: number };
+  'agent:chunk': { delta: string };
   'agent:error': { message: string };
 }
 

@@ -71,8 +71,80 @@ export class OpenAICompatibleAdapter implements ModelAdapter {
   }
 
   async *stream(messages: Message[], tools?: LLMTool[]): AsyncIterable<ModelChunk> {
-    const response = await this.generate(messages, tools);
-    yield { delta: response.content };
+    const body: Record<string, unknown> = {
+      model: this.config.model,
+      messages: messages.map(m => this.toOpenAIMessage(m)),
+      stream: true,
+    };
+
+    if (tools && tools.length > 0) {
+      body.tools = tools.map(t => ({
+        type: 'function',
+        function: {
+          name: t.name,
+          description: t.description,
+          parameters: t.inputSchema,
+        },
+      }));
+    }
+
+    const response = await fetch(`${this.config.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.config.apiKey}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Model API error: ${response.status} ${await response.text()}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('No response body for streaming');
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('data: ')) continue;
+        const data = trimmed.slice(6);
+        if (data === '[DONE]') return;
+
+        try {
+          const parsed = JSON.parse(data);
+          const delta = parsed.choices?.[0]?.delta;
+          if (!delta) continue;
+
+          const chunk: ModelChunk = { delta: delta.content ?? '' };
+
+          if (delta.tool_calls) {
+            const tc = delta.tool_calls[0];
+            chunk.toolCallDelta = {
+              id: tc.id,
+              name: tc.function?.name,
+              inputDelta: tc.function?.arguments,
+            };
+          }
+
+          yield chunk;
+        } catch {
+          // skip unparseable lines
+        }
+      }
+    }
   }
 
   private toOpenAIMessage(msg: Message): OpenAIMessage {

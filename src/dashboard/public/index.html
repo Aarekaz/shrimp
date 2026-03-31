@@ -795,20 +795,44 @@
     inputEl.value = '';
     sendBtn.disabled = true;
 
+    // Create streaming assistant message
+    hideThinking();
+    if (firstMessage) { messagesEl.textContent = ''; firstMessage = false; }
+    var msgDiv = document.createElement('div');
+    msgDiv.className = 'msg assistant';
+    var label = document.createElement('div');
+    label.className = 'msg-label';
+    label.textContent = 'shrimp';
+    msgDiv.appendChild(label);
+    var contentDiv = document.createElement('div');
+    msgDiv.appendChild(contentDiv);
+    messagesEl.appendChild(msgDiv);
+
     try {
       var res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text }),
       });
-      var data = await res.json();
-      if (data.error) {
-        addMessage('assistant', 'Error: ' + data.error);
-      } else {
-        addMessage('assistant', data.response);
+
+      var reader = res.body.getReader();
+      var decoder = new TextDecoder();
+      var fullText = '';
+
+      while (true) {
+        var result = await reader.read();
+        if (result.done) break;
+        var chunk = decoder.decode(result.value, { stream: true });
+        fullText += chunk;
+        contentDiv.innerHTML = renderMarkdown(fullText);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+
+      if (!fullText) {
+        contentDiv.textContent = '(empty response)';
       }
     } catch (e) {
-      addMessage('assistant', 'Error: ' + e.message);
+      contentDiv.textContent = 'Error: ' + e.message;
     }
 
     sendBtn.disabled = false;
