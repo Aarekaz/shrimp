@@ -96,25 +96,54 @@ export class AgentLoop {
         toolCalls: response.toolCalls,
       });
 
-      for (const toolCall of response.toolCalls) {
-        this.log('🔧', `calling ${toolCall.name}(${JSON.stringify(toolCall.input)})`);
-        this.bus.emit('agent:tool-call', { toolName: toolCall.name, input: toolCall.input });
-        const start = Date.now();
-        const result = await this.executeTool(toolCall);
-        const durationMs = Date.now() - start;
-        this.log('✅', `result: ${JSON.stringify(result)}`);
-        this.bus.emit('agent:tool-result', { toolName: toolCall.name, result, durationMs });
-        this.persistMessage({
-          role: 'tool',
-          content: JSON.stringify(result),
-          toolCallId: toolCall.id,
-        });
-      }
+      await this.executeToolBatch(response.toolCalls);
     }
 
     const limitMsg = `I reached my reasoning limit (${this.maxIterations} iterations). Here's what I have so far.`;
     this.persistMessage({ role: 'assistant', content: limitMsg });
     return limitMsg;
+  }
+
+  private async executeToolBatch(toolCalls: ToolCall[]): Promise<void> {
+    // Partition: read-only tools run in parallel, write tools run serially
+    const readOnly: ToolCall[] = [];
+    const writable: ToolCall[] = [];
+
+    for (const tc of toolCalls) {
+      const tool = this.registry.resolveTool(tc.name);
+      if (tool?.isReadOnly) {
+        readOnly.push(tc);
+      } else {
+        writable.push(tc);
+      }
+    }
+
+    // Run read-only tools in parallel
+    if (readOnly.length > 0) {
+      this.log('⚡', `running ${readOnly.length} read-only tool(s) in parallel`);
+      const promises = readOnly.map(tc => this.executeAndPersistTool(tc));
+      await Promise.all(promises);
+    }
+
+    // Run write tools serially
+    for (const tc of writable) {
+      await this.executeAndPersistTool(tc);
+    }
+  }
+
+  private async executeAndPersistTool(toolCall: ToolCall): Promise<void> {
+    this.log('🔧', `calling ${toolCall.name}(${JSON.stringify(toolCall.input)})`);
+    this.bus.emit('agent:tool-call', { toolName: toolCall.name, input: toolCall.input });
+    const start = Date.now();
+    const result = await this.executeTool(toolCall);
+    const durationMs = Date.now() - start;
+    this.log('✅', `result: ${JSON.stringify(result)}`);
+    this.bus.emit('agent:tool-result', { toolName: toolCall.name, result, durationMs });
+    this.persistMessage({
+      role: 'tool',
+      content: JSON.stringify(result),
+      toolCallId: toolCall.id,
+    });
   }
 
   private async executeTool(toolCall: ToolCall): Promise<unknown> {
@@ -236,16 +265,7 @@ Guidelines:
       yield '\n'; // visual separator before tool execution
       this.persistMessage({ role: 'assistant', content, toolCalls });
 
-      for (const toolCall of toolCalls) {
-        this.log('🔧', `calling ${toolCall.name}(${JSON.stringify(toolCall.input)})`);
-        this.bus.emit('agent:tool-call', { toolName: toolCall.name, input: toolCall.input });
-        const start = Date.now();
-        const result = await this.executeTool(toolCall);
-        const durationMs = Date.now() - start;
-        this.log('✅', `result: ${JSON.stringify(result)}`);
-        this.bus.emit('agent:tool-result', { toolName: toolCall.name, result, durationMs });
-        this.persistMessage({ role: 'tool', content: JSON.stringify(result), toolCallId: toolCall.id });
-      }
+      await this.executeToolBatch(toolCalls);
     }
 
     const limitMsg = `I reached my reasoning limit (${this.maxIterations} iterations).`;

@@ -17,6 +17,7 @@ export class MemoryCapability implements Capability {
       {
         name: 'memory.store',
         description: 'Store a fact, episode, or procedure in memory. Use this to remember important information.',
+        isReadOnly: false,
         parameters: z.object({
           content: z.string().describe('The information to remember'),
           type: z.enum(['fact', 'episode', 'procedure']).describe('Type of memory'),
@@ -36,6 +37,7 @@ export class MemoryCapability implements Capability {
       {
         name: 'memory.recall',
         description: 'Recall information from memory. Returns recent and relevant entries.',
+        isReadOnly: true,
         parameters: z.object({
           query: z.string().describe('What to search for'),
         }),
@@ -54,6 +56,7 @@ export class MemoryCapability implements Capability {
       {
         name: 'memory.forget',
         description: 'Remove a specific memory entry by its ID.',
+        isReadOnly: false,
         parameters: z.object({
           id: z.string().describe('The ID of the memory to forget'),
         }),

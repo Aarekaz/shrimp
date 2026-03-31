@@ -41,6 +41,7 @@ export interface Tool {
   parameters: ZodType;
   rawInputSchema?: Record<string, unknown>;
   approvalLevel: ApprovalLevel;
+  isReadOnly?: boolean;    // true = safe to run in parallel with other read-only tools
   handler: (input: Record<string, unknown>) => Promise<Result<ToolResult>>;
 }
 

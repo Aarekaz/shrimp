@@ -20,6 +20,7 @@ export class ComputerCapability implements Capability {
       {
         name: 'computer.browse',
         description: 'Navigate to a URL in the browser and return the page content or a screenshot.',
+        isReadOnly: true,
         parameters: z.object({
           url: z.string(),
           action: z.enum(['screenshot', 'content', 'click', 'type']).optional(),
@@ -46,6 +47,7 @@ export class ComputerCapability implements Capability {
       {
         name: 'computer.screenshot',
         description: 'Take a screenshot of the current desktop state.',
+        isReadOnly: true,
         parameters: z.object({}),
         approvalLevel: 'auto' as const,
         handler: async () => {
@@ -79,6 +81,7 @@ export class ComputerCapability implements Capability {
       {
         name: 'computer.file_read',
         description: 'Read a file from the computer.',
+        isReadOnly: true,
         parameters: z.object({
           path: z.string(),
         }),

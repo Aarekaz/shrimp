@@ -139,6 +139,7 @@ export class AgentsCapability implements Capability {
         name: 'agents.list',
         description: 'List all available sub-agents and their specialties.',
         parameters: z.object({}),
+        isReadOnly: true,
         approvalLevel: 'auto' as const,
         handler: async () => {
           const list = Array.from(this.agents.entries()).map(([name, agent]) => ({
