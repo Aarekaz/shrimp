@@ -116,6 +116,14 @@ export function createDashboard(config: DashboardConfig) {
     return c.json(sessionStore.list());
   });
 
+  // --- REST: resume a session ---
+  app.post('/api/sessions/:id/resume', (c) => {
+    const id = c.req.param('id');
+    const loaded = loop.loadSession(id);
+    if (!loaded) return c.json({ error: 'Session not found' }, 404);
+    return c.json({ resumed: true, messages: loop.getHistory().length });
+  });
+
   // --- REST: messages for a session ---
   app.get('/api/sessions/:id/messages', (c) => {
     if (!sessionStore) return c.json({ error: 'Session store not configured' }, 503);

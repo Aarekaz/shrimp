@@ -35,6 +35,17 @@ export class CLIChannel implements ChannelAdapter {
         process.exit(0);
       }
 
+      if (text.startsWith('/resume ')) {
+        const sessionId = text.slice(8).trim();
+        console.log(`\n🦐 Attempting to resume session ${sessionId}...`);
+        // The actual resume happens via the loop — emit an event or handle externally
+        // For now, just inform the user how to use it
+        console.log('🦐 Use SHRIMP_RESUME_SESSION=<id> when starting Shrimp to resume a session.');
+        console.log('🦐 Use /sessions to list available sessions.');
+        this.rl?.prompt();
+        return;
+      }
+
       if (this.messageHandler) {
         this.messageHandler({
           channel: 'cli',

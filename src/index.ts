@@ -5,6 +5,16 @@ import { formatError } from './core/errors';
 async function main() {
   const { bus, loop } = await createShrimpServer();
 
+  const resumeId = process.env.SHRIMP_RESUME_SESSION;
+  if (resumeId) {
+    const loaded = loop.loadSession(resumeId);
+    if (loaded) {
+      console.log(`  📂 Resumed session: ${resumeId} (${loop.getHistory().length} messages)`);
+    } else {
+      console.log(`  ⚠️ Session ${resumeId} not found, starting fresh`);
+    }
+  }
+
   console.log('   Type /quit to exit\n');
 
   const cli = new CLIChannel();

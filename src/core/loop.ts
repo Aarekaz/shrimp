@@ -349,6 +349,16 @@ Guidelines:
     return this.buildSystemPrompt();
   }
 
+  loadSession(sessionId: string): boolean {
+    if (!this.sessionStore) return false;
+    const session = this.sessionStore.get(sessionId);
+    if (!session) return false;
+    this.sessionId = sessionId;
+    this.conversationHistory = this.sessionStore.getMessages(sessionId);
+    this.invalidateSystemPrompt();
+    return true;
+  }
+
   private truncateToolOutput(output: unknown): string {
     const str = JSON.stringify(output);
     if (str.length <= MAX_TOOL_OUTPUT_CHARS) return str;
