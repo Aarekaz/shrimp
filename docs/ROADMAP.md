@@ -14,6 +14,11 @@ Things we saw in the Claude Code architecture that would make Shrimp better.
 - [ ] **Denial tracking** — if a tool keeps getting denied, stop trying it. Escalate to user after N denials.
 - [x] **Async generator for full loop** — run() yields typed LoopEvents, handleMessage/handleMessageStreaming are wrappers (done)
 - [ ] **Feature gating** — conditional capability loading via build-time flags. Zero cost for disabled features.
+- [x] **Background agents** — agents.spawn for async fire-and-forget (done)
+- [x] **Agent messaging** — agents.send to continue running agents (done)
+- [x] **No-recurse guard** — sub-agents can't spawn more sub-agents (done)
+- [x] **Coordinator mode** — SHRIMP_COORDINATOR=true, orchestrator-only (done)
+- [x] **Task notifications** — event bus lifecycle events for agent tasks (done)
 
 ## Core improvements
 

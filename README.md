@@ -145,6 +145,31 @@ Shrimp can delegate tasks to specialized sub-agents. Four come built in:
 
 The main agent decides when to delegate and to whom. Each sub-agent runs its own isolated reasoning loop. You can add your own or swap their models.
 
+## Background agents
+
+Shrimp can run agents in the background. Spawn them, check on them, send them messages:
+
+```
+You: Research quantum computing and write me a summary
+  🔧 calling agents.spawn({"agent":"researcher","task":"Research quantum computing..."})
+  ✅ result: {"task_id":"abc-123","status":"running"}
+
+🦐 Shrimp: I've dispatched the researcher. It's working in the background.
+           Use agents.tasks to check progress, or agents.send to give it more direction.
+```
+
+Background agents run async. The main agent continues working while they execute. When they finish, the result is available via `agents.tasks`.
+
+## Coordinator mode
+
+Set `SHRIMP_COORDINATOR=true` to run Shrimp as a pure orchestrator. In this mode, the main agent never executes tools directly — it only spawns and directs sub-agents.
+
+```bash
+SHRIMP_COORDINATOR=true bun run start
+```
+
+The coordinator breaks tasks into sub-tasks, spawns parallel workers, monitors progress, and synthesizes results. Good for complex multi-step work.
+
 ## Approval system
 
 Not every tool should run without asking. The approval gate has four levels:
