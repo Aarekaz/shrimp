@@ -1,3 +1,5 @@
+import type { ZodType } from 'zod';
+
 // --- Result type (no thrown exceptions) ---
 export type Result<T, E = CapabilityError> =
   | { ok: true; value: T }
@@ -21,12 +23,25 @@ export interface CapabilityError {
 // --- Tool System ---
 export type ApprovalLevel = 'auto' | 'notify' | 'approve' | 'never';
 
-export interface Tool {
+export interface ToolResult {
+  title: string;
+  output: unknown;
+  metadata?: Record<string, unknown>;
+}
+
+export interface LLMTool {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
+}
+
+export interface Tool {
+  name: string;
+  description: string;
+  parameters: ZodType;
+  rawInputSchema?: Record<string, unknown>;
   approvalLevel: ApprovalLevel;
-  handler: (input: Record<string, unknown>) => Promise<Result<unknown>>;
+  handler: (input: Record<string, unknown>) => Promise<Result<ToolResult>>;
 }
 
 // --- Model Types ---
@@ -69,8 +84,8 @@ export interface Capability {
 
 // --- Model Adapter ---
 export interface ModelAdapter {
-  generate(messages: Message[], tools?: Tool[]): Promise<ModelResponse>;
-  stream(messages: Message[], tools?: Tool[]): AsyncIterable<ModelChunk>;
+  generate(messages: Message[], tools?: LLMTool[]): Promise<ModelResponse>;
+  stream(messages: Message[], tools?: LLMTool[]): AsyncIterable<ModelChunk>;
 }
 
 // --- Channel Adapter ---

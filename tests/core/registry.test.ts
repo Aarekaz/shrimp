@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'bun:test';
+import { z } from 'zod';
 import { CapabilityRegistry } from '../../src/core/registry';
 import type { Capability, Tool } from '../../src/core/types';
 import { ok } from '../../src/core/types';
@@ -7,9 +8,9 @@ function makeTool(name: string): Tool {
   return {
     name,
     description: `Test tool ${name}`,
-    inputSchema: { type: 'object', properties: {} },
+    parameters: z.object({}),
     approvalLevel: 'auto',
-    handler: async () => ok({ result: 'ok' }),
+    handler: async () => ok({ title: 'Done', output: { result: 'ok' } }),
   };
 }
 
@@ -66,5 +67,48 @@ describe('CapabilityRegistry', () => {
     const registry = new CapabilityRegistry();
     registry.register(makeCapability('memory', []));
     expect(() => registry.register(makeCapability('memory', []))).toThrow();
+  });
+
+  it('allToolsForLLM converts Zod schema to JSON Schema', () => {
+    const registry = new CapabilityRegistry();
+    const tool: Tool = {
+      name: 'memory.store',
+      description: 'Store a memory entry',
+      parameters: z.object({
+        content: z.string(),
+        type: z.enum(['fact', 'episode']),
+      }),
+      approvalLevel: 'auto',
+      handler: async () => ok({ title: 'Stored', output: { stored: 'abc-123' } }),
+    };
+    registry.register(makeCapability('memory', [tool]));
+    const llmTools = registry.allToolsForLLM();
+    expect(llmTools).toHaveLength(1);
+    const llmTool = llmTools[0];
+    expect(llmTool.name).toBe('memory.store');
+    expect(llmTool.inputSchema).toMatchObject({
+      type: 'object',
+      properties: {
+        content: { type: 'string' },
+        type: { type: 'string', enum: ['fact', 'episode'] },
+      },
+      required: ['content', 'type'],
+    });
+  });
+
+  it('allToolsForLLM uses rawInputSchema when present', () => {
+    const registry = new CapabilityRegistry();
+    const rawSchema = { type: 'object', properties: { foo: { type: 'number' } } };
+    const tool: Tool = {
+      name: 'composio.action',
+      description: 'A Composio action',
+      parameters: z.object({}),
+      rawInputSchema: rawSchema,
+      approvalLevel: 'auto',
+      handler: async () => ok({ title: 'Done', output: {} }),
+    };
+    registry.register(makeCapability('composio', [tool]));
+    const llmTools = registry.allToolsForLLM();
+    expect(llmTools[0].inputSchema).toBe(rawSchema);
   });
 });
