@@ -3,6 +3,7 @@ import type { ShrimpEventBus } from './events';
 import type { CapabilityRegistry } from './registry';
 import type { ApprovalGate } from './approval';
 import type { SessionStore } from './session';
+import { ContextManager } from './context';
 
 export interface AgentLoopConfig {
   bus: ShrimpEventBus;
@@ -13,6 +14,7 @@ export interface AgentLoopConfig {
   maxIterations?: number;
   verbose?: boolean;
   sessionStore?: SessionStore;
+  maxContextTokens?: number;
 }
 
 export class AgentLoop {
@@ -26,6 +28,7 @@ export class AgentLoop {
   private conversationHistory: Message[] = [];
   private sessionStore?: SessionStore;
   private sessionId?: string;
+  private contextManager: ContextManager;
 
   constructor(config: AgentLoopConfig) {
     this.bus = config.bus;
@@ -36,6 +39,7 @@ export class AgentLoop {
     this.maxIterations = config.maxIterations ?? 10;
     this.verbose = config.verbose ?? false;
     this.sessionStore = config.sessionStore;
+    this.contextManager = new ContextManager({ maxTokens: config.maxContextTokens ?? 50000 });
     if (this.sessionStore) {
       const session = this.sessionStore.create(`Session — ${new Date().toLocaleString()}`);
       this.sessionId = session.id;
@@ -64,9 +68,10 @@ export class AgentLoop {
     while (iterations < this.maxIterations) {
       iterations++;
 
+      const fittedHistory = this.contextManager.fit(this.conversationHistory);
       const messages: Message[] = [
         { role: 'system', content: systemPrompt },
-        ...this.conversationHistory,
+        ...fittedHistory,
       ];
 
       const tools = this.registry.allToolsForLLM();
