@@ -95,6 +95,11 @@ export function createDashboard(config: DashboardConfig) {
     });
   });
 
+  // --- REST: cost tracking ---
+  app.get('/api/cost', (c) => {
+    return c.json(loop.costTracker.getState());
+  });
+
   // --- REST: session list ---
   app.get('/api/sessions', (c) => {
     if (!sessionStore) return c.json({ error: 'Session store not configured' }, 503);

@@ -4,12 +4,17 @@ import type { CapabilityRegistry } from './registry';
 import type { ApprovalGate } from './approval';
 import type { SessionStore } from './session';
 import { ContextManager } from './context';
+import { CostTracker } from './cost';
+
+const MAX_TOOL_OUTPUT_CHARS = 50_000;
+const TOOL_OUTPUT_PREVIEW_CHARS = 2_000;
 
 export interface AgentLoopConfig {
   bus: ShrimpEventBus;
   registry: CapabilityRegistry;
   gate: ApprovalGate;
   model: ModelAdapter;
+  modelName?: string;
   identity: { name: string; owner: string };
   maxIterations?: number;
   verbose?: boolean;
@@ -22,6 +27,7 @@ export class AgentLoop {
   private registry: CapabilityRegistry;
   private gate: ApprovalGate;
   private model: ModelAdapter;
+  private modelName: string;
   private identity: { name: string; owner: string };
   private maxIterations: number;
   private verbose: boolean;
@@ -29,17 +35,24 @@ export class AgentLoop {
   private sessionStore?: SessionStore;
   private sessionId?: string;
   private contextManager: ContextManager;
+  readonly costTracker: CostTracker;
+
+  // Memoized system prompt — only rebuilt when tools change
+  private cachedSystemPrompt: string | null = null;
+  private cachedToolCount: number = -1;
 
   constructor(config: AgentLoopConfig) {
     this.bus = config.bus;
     this.registry = config.registry;
     this.gate = config.gate;
     this.model = config.model;
+    this.modelName = config.modelName ?? 'unknown';
     this.identity = config.identity;
     this.maxIterations = config.maxIterations ?? 10;
     this.verbose = config.verbose ?? false;
     this.sessionStore = config.sessionStore;
     this.contextManager = new ContextManager({ maxTokens: config.maxContextTokens ?? 50000 });
+    this.costTracker = new CostTracker();
     if (this.sessionStore) {
       const session = this.sessionStore.create(`Session — ${new Date().toLocaleString()}`);
       this.sessionId = session.id;
@@ -78,7 +91,8 @@ export class AgentLoop {
       this.log('🧠', `thinking... (iteration ${iterations}/${this.maxIterations})`);
       this.bus.emit('agent:thinking', { iteration: iterations, maxIterations: this.maxIterations });
       const response = await this.model.generate(messages, tools.length > 0 ? tools : undefined);
-      this.log('📊', `tokens: ${response.usage.inputTokens} in / ${response.usage.outputTokens} out`);
+      this.costTracker.add(this.modelName, response.usage.inputTokens, response.usage.outputTokens);
+      this.log('📊', `tokens: ${response.usage.inputTokens} in / ${response.usage.outputTokens} out (${this.costTracker.format()})`);
 
       if (!response.toolCalls || response.toolCalls.length === 0) {
         this.persistMessage({ role: 'assistant', content: response.content });
@@ -139,9 +153,12 @@ export class AgentLoop {
     const durationMs = Date.now() - start;
     this.log('✅', `result: ${JSON.stringify(result)}`);
     this.bus.emit('agent:tool-result', { toolName: toolCall.name, result, durationMs });
+
+    // Truncate oversized tool output to prevent blowing context window
+    const content = this.truncateToolOutput(result);
     this.persistMessage({
       role: 'tool',
-      content: JSON.stringify(result),
+      content,
       toolCallId: toolCall.id,
     });
   }
@@ -185,12 +202,18 @@ export class AgentLoop {
   }
 
   private buildSystemPrompt(): string {
+    // Memoize: only rebuild when tool count changes (capability registered/unregistered)
+    const currentToolCount = this.registry.allTools().length;
+    if (this.cachedSystemPrompt && this.cachedToolCount === currentToolCount) {
+      return this.cachedSystemPrompt;
+    }
+
     const tools = this.registry.allTools();
     const toolDescriptions = tools
       .map(t => `- ${t.name}: ${t.description}`)
       .join('\n');
 
-    return `You are ${this.identity.name}, a personal AI agent for ${this.identity.owner}.
+    this.cachedSystemPrompt = `You are ${this.identity.name}, a personal AI agent for ${this.identity.owner}.
 Your owner's name is ${this.identity.owner} — you already know them. Greet them naturally, don't ask who they are.
 
 You have access to these tools:
@@ -202,6 +225,26 @@ Guidelines:
 - Only call memory.recall when the user asks you something you need to look up. Don't recall on every message.
 - For simple greetings, just respond naturally without calling any tools.
 - When you have a final answer, respond with text — don't call tools unnecessarily.`;
+
+    this.cachedToolCount = currentToolCount;
+    return this.cachedSystemPrompt;
+  }
+
+  invalidateSystemPrompt(): void {
+    this.cachedSystemPrompt = null;
+    this.cachedToolCount = -1;
+  }
+
+  private truncateToolOutput(output: unknown): string {
+    const str = JSON.stringify(output);
+    if (str.length <= MAX_TOOL_OUTPUT_CHARS) return str;
+
+    // Find a clean cut point (last newline within preview range)
+    const preview = str.slice(0, TOOL_OUTPUT_PREVIEW_CHARS);
+    const lastNewline = preview.lastIndexOf('\\n');
+    const cutPoint = lastNewline > TOOL_OUTPUT_PREVIEW_CHARS * 0.5 ? lastNewline : TOOL_OUTPUT_PREVIEW_CHARS;
+
+    return `[Output truncated — ${str.length} chars, showing first ${cutPoint}]\n${str.slice(0, cutPoint)}\n...\n[Full output available in tool result]`;
   }
 
   async *handleMessageStreaming(userText: string): AsyncGenerator<string> {

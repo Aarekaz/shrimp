@@ -138,8 +138,10 @@ export async function createShrimpServer(): Promise<ShrimpServer> {
     registry,
     gate,
     model,
+    modelName: config.model.model,
     identity: config.identity,
     verbose: true,
+    sessionStore,
   });
 
   // Dashboard — web UI
