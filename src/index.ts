@@ -131,7 +131,7 @@ async function main() {
   });
 
   // Dashboard — web UI on port 3000
-  const dashboardPort = parseInt(process.env.SHRIMP_DASHBOARD_PORT ?? '3000');
+  const dashboardPort = parseInt(process.env.SHRIMP_DASHBOARD_PORT ?? '3737');
   const dashboard = createDashboard({ port: dashboardPort, bus, registry, loop });
   const server = Bun.serve({
     port: dashboardPort,
