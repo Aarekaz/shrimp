@@ -17,6 +17,11 @@ export interface EventMap {
   'agent:response': { content: string; tokensIn: number; tokensOut: number };
   'agent:chunk': { delta: string };
   'agent:error': { message: string };
+  // Agent task lifecycle events
+  'agent-task:spawned': { taskId: string; agentName: string; prompt: string };
+  'agent-task:completed': { taskId: string; agentName: string; result: string; durationMs: number };
+  'agent-task:failed': { taskId: string; agentName: string; error: string };
+  'agent-task:message': { taskId: string; from: string; message: string };
 }
 
 type EventHandler<T> = (payload: T) => void;

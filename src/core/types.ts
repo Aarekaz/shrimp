@@ -143,6 +143,21 @@ export type LoopEvent =
   | { type: 'error'; message: string }
   | { type: 'done'; content: string };
 
+// --- Agent Tasks ---
+export type AgentTaskStatus = 'pending' | 'running' | 'completed' | 'failed';
+
+export interface AgentTask {
+  id: string;
+  agentName: string;
+  prompt: string;
+  status: AgentTaskStatus;
+  result?: string;
+  error?: string;
+  startedAt: Date;
+  completedAt?: Date;
+  tokenUsage: { input: number; output: number };
+}
+
 // --- Memory ---
 export interface MemoryEntry {
   id: string;
