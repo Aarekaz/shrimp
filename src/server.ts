@@ -9,6 +9,7 @@ import { ComposioCapability } from './capabilities/composio/index';
 import { ComputerCapability } from './capabilities/computer/index';
 import { AgentsCapability } from './capabilities/agents/index';
 import { SchedulerCapability } from './capabilities/scheduler/index';
+import { MCPCapability } from './capabilities/mcp/index';
 import { createDashboard } from './dashboard/server';
 import { loadConfig } from './config/defaults';
 import { SessionStore } from './core/session';
@@ -138,6 +139,23 @@ export async function createShrimpServer(): Promise<ShrimpServer> {
   registry.register(schedulerCap);
   await schedulerCap.start();
   console.log('  ⏰ Scheduler active');
+
+  // MCP servers — load from env if configured
+  const mcpServersJson = process.env.SHRIMP_MCP_SERVERS;
+  if (mcpServersJson) {
+    try {
+      const mcpServers = JSON.parse(mcpServersJson) as Array<{ name: string; command: string; args?: string[]; env?: Record<string, string> }>;
+      for (const serverConfig of mcpServers) {
+        const mcp = new MCPCapability(serverConfig);
+        await mcp.start();
+        if (mcp.tools.length > 0) {
+          registry.register(mcp);
+        }
+      }
+    } catch (e: any) {
+      console.log(`  ⚠️ Failed to parse SHRIMP_MCP_SERVERS: ${e.message}`);
+    }
+  }
 
   // Agent loop (verbose by default — see the agent think)
   const loop = new AgentLoop({
