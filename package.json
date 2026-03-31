@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@composio/core": "^0.6.7",
+    "hono": "^4.12.9",
     "supermemory": "^4.17.0"
   }
 }

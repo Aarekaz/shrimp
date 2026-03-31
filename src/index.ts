@@ -8,6 +8,7 @@ import { SuperMemoryCapability } from './capabilities/memory/supermemory';
 import { ComposioCapability } from './capabilities/composio/index';
 import { ComputerCapability } from './capabilities/computer/index';
 import { CLIChannel } from './capabilities/channels/cli';
+import { createDashboard } from './dashboard/server';
 import { loadConfig } from './config/defaults';
 
 async function main() {
@@ -93,9 +94,19 @@ async function main() {
     verbose: true,
   });
 
+  // Dashboard — web UI on port 3000
+  const dashboardPort = parseInt(process.env.SHRIMP_DASHBOARD_PORT ?? '3000');
+  const dashboard = createDashboard({ port: dashboardPort, bus, registry, loop });
+  const server = Bun.serve({
+    port: dashboardPort,
+    fetch: dashboard.fetch,
+  });
+  console.log(`  🌐 Dashboard: http://localhost:${server.port}`);
+
   // CLI Channel
   const cli = new CLIChannel();
   cli.onMessage(async (msg) => {
+    bus.emit('channel:message', { channel: 'cli', from: 'user', text: msg.text });
     try {
       const response = await loop.handleMessage(msg.text);
       await cli.send(response);

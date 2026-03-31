@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shrimp Dashboard</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+    background: #0a0a0a;
+    color: #e0e0e0;
+    height: 100vh;
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    grid-template-rows: 48px 1fr;
+  }
+
+  /* Header */
+  header {
+    grid-column: 1 / -1;
+    background: #111;
+    border-bottom: 1px solid #222;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 12px;
+  }
+  header h1 { font-size: 16px; font-weight: 600; }
+  header h1 span { color: #ff6b35; }
+  .status { font-size: 11px; color: #666; margin-left: auto; }
+  .status.connected { color: #4ade80; }
+
+  /* Main chat area */
+  .chat-area {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .msg {
+    max-width: 85%;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .msg.user {
+    align-self: flex-end;
+    background: #1a3a5c;
+    color: #b8d4f0;
+    border-bottom-right-radius: 2px;
+  }
+  .msg.assistant {
+    align-self: flex-start;
+    background: #1a1a1a;
+    border: 1px solid #282828;
+    border-bottom-left-radius: 2px;
+  }
+
+  /* Chat input */
+  .chat-input {
+    padding: 12px 16px;
+    border-top: 1px solid #222;
+    display: flex;
+    gap: 8px;
+  }
+  .chat-input input {
+    flex: 1;
+    background: #151515;
+    border: 1px solid #333;
+    color: #e0e0e0;
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 13px;
+    outline: none;
+  }
+  .chat-input input:focus { border-color: #ff6b35; }
+  .chat-input button {
+    background: #ff6b35;
+    color: #fff;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .chat-input button:hover { background: #e55a25; }
+  .chat-input button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Sidebar */
+  .sidebar {
+    border-left: 1px solid #222;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .sidebar-tabs {
+    display: flex;
+    border-bottom: 1px solid #222;
+  }
+  .sidebar-tabs button {
+    flex: 1;
+    background: none;
+    border: none;
+    color: #666;
+    padding: 10px;
+    font-family: inherit;
+    font-size: 11px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 2px solid transparent;
+  }
+  .sidebar-tabs button.active {
+    color: #ff6b35;
+    border-bottom-color: #ff6b35;
+  }
+
+  .sidebar-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+  }
+
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* Event feed */
+  .event {
+    padding: 6px 8px;
+    margin-bottom: 4px;
+    border-radius: 4px;
+    font-size: 11px;
+    border-left: 3px solid #333;
+  }
+  .event.thinking { border-left-color: #fbbf24; background: #1a1700; }
+  .event.tool-call { border-left-color: #60a5fa; background: #0a1628; }
+  .event.tool-result { border-left-color: #4ade80; background: #0a1a0a; }
+  .event.response { border-left-color: #c084fc; background: #1a0a28; }
+  .event.error { border-left-color: #f87171; background: #1a0a0a; }
+  .event-time { color: #555; margin-right: 6px; }
+  .event-label { font-weight: 600; margin-right: 4px; }
+
+  /* Tools panel */
+  .tool-item {
+    padding: 8px;
+    margin-bottom: 6px;
+    background: #151515;
+    border-radius: 4px;
+    border: 1px solid #222;
+  }
+  .tool-name { font-weight: 600; font-size: 12px; color: #60a5fa; }
+  .tool-desc { font-size: 11px; color: #888; margin-top: 2px; }
+  .tool-approval {
+    display: inline-block;
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-top: 4px;
+  }
+  .tool-approval.auto { background: #0a1a0a; color: #4ade80; }
+  .tool-approval.approve { background: #1a1700; color: #fbbf24; }
+  .tool-approval.notify { background: #0a1628; color: #60a5fa; }
+  .tool-approval.never { background: #1a0a0a; color: #f87171; }
+
+  .empty { color: #444; font-style: italic; font-size: 12px; text-align: center; padding: 40px 20px; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+</style>
+</head>
+<body>
+  <header>
+    <h1><span>&#x1F990;</span> Shrimp Dashboard</h1>
+    <div class="status" id="status">connecting...</div>
+  </header>
+
+  <div class="chat-area">
+    <div class="messages" id="messages">
+      <div class="empty">Start a conversation with Shrimp</div>
+    </div>
+    <div class="chat-input">
+      <input type="text" id="input" placeholder="Talk to Shrimp..." autocomplete="off" />
+      <button id="send">Send</button>
+    </div>
+  </div>
+
+  <div class="sidebar">
+    <div class="sidebar-tabs">
+      <button class="active" id="tab-events">Events</button>
+      <button id="tab-tools">Tools</button>
+    </div>
+    <div class="sidebar-content">
+      <div class="panel active" id="panel-events">
+        <div class="empty">Waiting for activity...</div>
+      </div>
+      <div class="panel" id="panel-tools">
+        <div class="empty">Loading tools...</div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const messagesEl = document.getElementById('messages');
+  const inputEl = document.getElementById('input');
+  const sendBtn = document.getElementById('send');
+  const statusEl = document.getElementById('status');
+  const eventsPanel = document.getElementById('panel-events');
+  const toolsPanel = document.getElementById('panel-tools');
+  let firstMessage = true;
+  let eventsStarted = false;
+
+  // --- SSE: real-time events ---
+  const sse = new EventSource('/api/events');
+
+  sse.onopen = function() {
+    statusEl.textContent = 'connected';
+    statusEl.className = 'status connected';
+  };
+  sse.onerror = function() {
+    statusEl.textContent = 'disconnected';
+    statusEl.className = 'status';
+  };
+
+  function addEvent(type, labelText, detailText) {
+    if (!eventsStarted) { eventsPanel.textContent = ''; eventsStarted = true; }
+    var div = document.createElement('div');
+    div.className = 'event ' + type;
+
+    var time = document.createElement('span');
+    time.className = 'event-time';
+    time.textContent = new Date().toLocaleTimeString('en', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    div.appendChild(time);
+
+    var label = document.createElement('span');
+    label.className = 'event-label';
+    label.textContent = labelText;
+    div.appendChild(label);
+
+    var detail = document.createTextNode(detailText);
+    div.appendChild(detail);
+
+    eventsPanel.appendChild(div);
+    eventsPanel.scrollTop = eventsPanel.scrollHeight;
+  }
+
+  sse.addEventListener('agent:thinking', function(e) {
+    var d = JSON.parse(e.data);
+    addEvent('thinking', 'THINK', 'iteration ' + d.iteration + '/' + d.maxIterations);
+  });
+
+  sse.addEventListener('agent:tool-call', function(e) {
+    var d = JSON.parse(e.data);
+    var inputStr = JSON.stringify(d.input).slice(0, 80);
+    addEvent('tool-call', 'CALL', d.toolName + '(' + inputStr + ')');
+  });
+
+  sse.addEventListener('agent:tool-result', function(e) {
+    var d = JSON.parse(e.data);
+    var resultStr = JSON.stringify(d.result).slice(0, 80);
+    addEvent('tool-result', 'RESULT', d.toolName + ' (' + d.durationMs + 'ms) -> ' + resultStr);
+  });
+
+  sse.addEventListener('agent:response', function(e) {
+    var d = JSON.parse(e.data);
+    addEvent('response', 'REPLY', d.tokensIn + ' in / ' + d.tokensOut + ' out');
+  });
+
+  sse.addEventListener('agent:error', function(e) {
+    var d = JSON.parse(e.data);
+    addEvent('error', 'ERROR', d.message);
+  });
+
+  // --- Chat ---
+  function addMessage(role, text) {
+    if (firstMessage) { messagesEl.textContent = ''; firstMessage = false; }
+    var div = document.createElement('div');
+    div.className = 'msg ' + role;
+    div.textContent = text;
+    messagesEl.appendChild(div);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  async function sendMessage() {
+    var text = inputEl.value.trim();
+    if (!text) return;
+
+    addMessage('user', text);
+    inputEl.value = '';
+    sendBtn.disabled = true;
+
+    try {
+      var res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text }),
+      });
+      var data = await res.json();
+      if (data.error) {
+        addMessage('assistant', 'Error: ' + data.error);
+      } else {
+        addMessage('assistant', data.response);
+      }
+    } catch (e) {
+      addMessage('assistant', 'Error: ' + e.message);
+    }
+
+    sendBtn.disabled = false;
+    inputEl.focus();
+  }
+
+  sendBtn.addEventListener('click', sendMessage);
+  inputEl.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !sendBtn.disabled) sendMessage();
+  });
+
+  // --- Tabs ---
+  document.getElementById('tab-events').addEventListener('click', function() {
+    document.querySelectorAll('.sidebar-tabs button').forEach(function(b) { b.classList.remove('active'); });
+    document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
+    this.classList.add('active');
+    document.getElementById('panel-events').classList.add('active');
+  });
+  document.getElementById('tab-tools').addEventListener('click', function() {
+    document.querySelectorAll('.sidebar-tabs button').forEach(function(b) { b.classList.remove('active'); });
+    document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
+    this.classList.add('active');
+    document.getElementById('panel-tools').classList.add('active');
+  });
+
+  // --- Load tools ---
+  async function loadTools() {
+    try {
+      var res = await fetch('/api/capabilities');
+      var caps = await res.json();
+      toolsPanel.textContent = '';
+      if (caps.length === 0) {
+        var empty = document.createElement('div');
+        empty.className = 'empty';
+        empty.textContent = 'No capabilities loaded';
+        toolsPanel.appendChild(empty);
+        return;
+      }
+      for (var i = 0; i < caps.length; i++) {
+        for (var j = 0; j < caps[i].tools.length; j++) {
+          var tool = caps[i].tools[j];
+          var div = document.createElement('div');
+          div.className = 'tool-item';
+
+          var name = document.createElement('div');
+          name.className = 'tool-name';
+          name.textContent = tool.name;
+          div.appendChild(name);
+
+          var desc = document.createElement('div');
+          desc.className = 'tool-desc';
+          desc.textContent = tool.description.slice(0, 100);
+          div.appendChild(desc);
+
+          var approval = document.createElement('span');
+          approval.className = 'tool-approval ' + tool.approvalLevel;
+          approval.textContent = tool.approvalLevel;
+          div.appendChild(approval);
+
+          toolsPanel.appendChild(div);
+        }
+      }
+    } catch (e) {
+      toolsPanel.textContent = '';
+      var err = document.createElement('div');
+      err.className = 'empty';
+      err.textContent = 'Failed to load tools';
+      toolsPanel.appendChild(err);
+    }
+  }
+
+  loadTools();
+  inputEl.focus();
+</script>
+</body>
+</html>

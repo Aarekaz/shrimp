@@ -55,11 +55,13 @@ export class AgentLoop {
 
       const tools = this.registry.allTools();
       this.log('🧠', `thinking... (iteration ${iterations}/${this.maxIterations})`);
+      this.bus.emit('agent:thinking', { iteration: iterations, maxIterations: this.maxIterations });
       const response = await this.model.generate(messages, tools.length > 0 ? tools : undefined);
       this.log('📊', `tokens: ${response.usage.inputTokens} in / ${response.usage.outputTokens} out`);
 
       if (!response.toolCalls || response.toolCalls.length === 0) {
         this.conversationHistory.push({ role: 'assistant', content: response.content });
+        this.bus.emit('agent:response', { content: response.content, tokensIn: response.usage.inputTokens, tokensOut: response.usage.outputTokens });
         return response.content;
       }
 
@@ -75,8 +77,12 @@ export class AgentLoop {
 
       for (const toolCall of response.toolCalls) {
         this.log('🔧', `calling ${toolCall.name}(${JSON.stringify(toolCall.input)})`);
+        this.bus.emit('agent:tool-call', { toolName: toolCall.name, input: toolCall.input });
+        const start = Date.now();
         const result = await this.executeTool(toolCall);
+        const durationMs = Date.now() - start;
         this.log('✅', `result: ${JSON.stringify(result)}`);
+        this.bus.emit('agent:tool-result', { toolName: toolCall.name, result, durationMs });
         this.conversationHistory.push({
           role: 'tool',
           content: JSON.stringify(result),
@@ -137,6 +143,10 @@ ${toolDescriptions || '(no tools available)'}
 When you want to use a tool, respond with a tool call. When you have a final answer, respond with text.
 
 Be concise and helpful. Remember important facts about your owner using the memory tools.`;
+  }
+
+  getHistory(): Message[] {
+    return this.conversationHistory;
   }
 
   clearHistory(): void {
