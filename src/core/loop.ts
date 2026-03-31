@@ -2,6 +2,7 @@ import type { ModelAdapter, Message, Tool, ToolCall } from './types';
 import type { ShrimpEventBus } from './events';
 import type { CapabilityRegistry } from './registry';
 import type { ApprovalGate } from './approval';
+import type { SessionStore } from './session';
 
 export interface AgentLoopConfig {
   bus: ShrimpEventBus;
@@ -11,6 +12,7 @@ export interface AgentLoopConfig {
   identity: { name: string; owner: string };
   maxIterations?: number;
   verbose?: boolean;
+  sessionStore?: SessionStore;
 }
 
 export class AgentLoop {
@@ -22,6 +24,8 @@ export class AgentLoop {
   private maxIterations: number;
   private verbose: boolean;
   private conversationHistory: Message[] = [];
+  private sessionStore?: SessionStore;
+  private sessionId?: string;
 
   constructor(config: AgentLoopConfig) {
     this.bus = config.bus;
@@ -31,6 +35,18 @@ export class AgentLoop {
     this.identity = config.identity;
     this.maxIterations = config.maxIterations ?? 10;
     this.verbose = config.verbose ?? false;
+    this.sessionStore = config.sessionStore;
+    if (this.sessionStore) {
+      const session = this.sessionStore.create(`Session — ${new Date().toLocaleString()}`);
+      this.sessionId = session.id;
+    }
+  }
+
+  private persistMessage(message: Message): void {
+    this.conversationHistory.push(message);
+    if (this.sessionStore && this.sessionId) {
+      this.sessionStore.addMessage(this.sessionId, message);
+    }
   }
 
   private log(icon: string, msg: string): void {
@@ -40,7 +56,7 @@ export class AgentLoop {
   }
 
   async handleMessage(userText: string): Promise<string> {
-    this.conversationHistory.push({ role: 'user', content: userText });
+    this.persistMessage({ role: 'user', content: userText });
 
     const systemPrompt = this.buildSystemPrompt();
     let iterations = 0;
@@ -60,7 +76,7 @@ export class AgentLoop {
       this.log('📊', `tokens: ${response.usage.inputTokens} in / ${response.usage.outputTokens} out`);
 
       if (!response.toolCalls || response.toolCalls.length === 0) {
-        this.conversationHistory.push({ role: 'assistant', content: response.content });
+        this.persistMessage({ role: 'assistant', content: response.content });
         this.bus.emit('agent:response', { content: response.content, tokensIn: response.usage.inputTokens, tokensOut: response.usage.outputTokens });
         return response.content;
       }
@@ -69,7 +85,7 @@ export class AgentLoop {
         this.log('💭', `thought: "${response.content}"`);
       }
 
-      this.conversationHistory.push({
+      this.persistMessage({
         role: 'assistant',
         content: response.content,
         toolCalls: response.toolCalls,
@@ -83,7 +99,7 @@ export class AgentLoop {
         const durationMs = Date.now() - start;
         this.log('✅', `result: ${JSON.stringify(result)}`);
         this.bus.emit('agent:tool-result', { toolName: toolCall.name, result, durationMs });
-        this.conversationHistory.push({
+        this.persistMessage({
           role: 'tool',
           content: JSON.stringify(result),
           toolCallId: toolCall.id,
@@ -92,7 +108,7 @@ export class AgentLoop {
     }
 
     const limitMsg = `I reached my reasoning limit (${this.maxIterations} iterations). Here's what I have so far.`;
-    this.conversationHistory.push({ role: 'assistant', content: limitMsg });
+    this.persistMessage({ role: 'assistant', content: limitMsg });
     return limitMsg;
   }
 

@@ -4,16 +4,18 @@ import { streamSSE } from 'hono/streaming';
 import type { ShrimpEventBus } from '../core/events';
 import type { CapabilityRegistry } from '../core/registry';
 import type { AgentLoop } from '../core/loop';
+import type { SessionStore } from '../core/session';
 
 export interface DashboardConfig {
   port: number;
   bus: ShrimpEventBus;
   registry: CapabilityRegistry;
   loop: AgentLoop;
+  sessionStore?: SessionStore;
 }
 
 export function createDashboard(config: DashboardConfig) {
-  const { bus, registry, loop } = config;
+  const { bus, registry, loop, sessionStore } = config;
   const app = new Hono();
 
   // --- SSE: real-time event stream ---
@@ -87,6 +89,21 @@ export function createDashboard(config: DashboardConfig) {
     } catch (e: any) {
       return c.json({ error: e.message }, 500);
     }
+  });
+
+  // --- REST: session list ---
+  app.get('/api/sessions', (c) => {
+    if (!sessionStore) return c.json({ error: 'Session store not configured' }, 503);
+    return c.json(sessionStore.list());
+  });
+
+  // --- REST: messages for a session ---
+  app.get('/api/sessions/:id/messages', (c) => {
+    if (!sessionStore) return c.json({ error: 'Session store not configured' }, 503);
+    const id = c.req.param('id');
+    const session = sessionStore.get(id);
+    if (!session) return c.json({ error: 'Session not found' }, 404);
+    return c.json(sessionStore.getMessages(id));
   });
 
   // --- Static files (dashboard UI) ---
