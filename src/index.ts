@@ -7,6 +7,7 @@ import { MemoryCapability } from './capabilities/memory/index';
 import { SuperMemoryCapability } from './capabilities/memory/supermemory';
 import { ComposioCapability } from './capabilities/composio/index';
 import { ComputerCapability } from './capabilities/computer/index';
+import { AgentsCapability } from './capabilities/agents/index';
 import { CLIChannel } from './capabilities/channels/cli';
 import { createDashboard } from './dashboard/server';
 import { loadConfig } from './config/defaults';
@@ -83,6 +84,41 @@ async function main() {
       registry.register(computer);
     }
   }
+
+  // Sub-agents — specialized agents for delegation
+  const agents = new AgentsCapability();
+
+  // Built-in sub-agents using the same model (can be swapped to different models)
+  agents.addAgent({
+    name: 'researcher',
+    description: 'Research agent — good at gathering information, summarizing findings, and answering factual questions in depth.',
+    model,
+    systemPrompt: `You are a research specialist. Your job is to provide thorough, well-structured answers to research questions. Be detailed and cite your reasoning. Organize your response with clear sections when appropriate.`,
+  });
+
+  agents.addAgent({
+    name: 'writer',
+    description: 'Writing agent — drafts emails, messages, documents, and creative content with the right tone.',
+    model,
+    systemPrompt: `You are a professional writer. Your job is to draft clear, well-written content. Match the tone and format to what's requested — formal for business emails, casual for messages, structured for documents. Always provide the complete draft, ready to use.`,
+  });
+
+  agents.addAgent({
+    name: 'coder',
+    description: 'Coding agent — writes, reviews, and explains code. Supports any programming language.',
+    model,
+    systemPrompt: `You are an expert programmer. Your job is to write clean, correct, well-documented code. Always include the programming language. Explain your approach briefly. If reviewing code, point out bugs, improvements, and security issues.`,
+  });
+
+  agents.addAgent({
+    name: 'planner',
+    description: 'Planning agent — breaks down complex tasks into actionable steps, creates schedules, and organizes work.',
+    model,
+    systemPrompt: `You are a planning specialist. Your job is to take a complex goal and break it into clear, actionable steps. Number each step. Estimate effort where possible. Identify dependencies and blockers. Be practical, not theoretical.`,
+  });
+
+  registry.register(agents);
+  await agents.start();
 
   // Agent loop (verbose by default — see the agent think)
   const loop = new AgentLoop({
