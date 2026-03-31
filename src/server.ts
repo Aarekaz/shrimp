@@ -8,6 +8,7 @@ import { SuperMemoryCapability } from './capabilities/memory/supermemory';
 import { ComposioCapability } from './capabilities/composio/index';
 import { ComputerCapability } from './capabilities/computer/index';
 import { AgentsCapability } from './capabilities/agents/index';
+import { SchedulerCapability } from './capabilities/scheduler/index';
 import { createDashboard } from './dashboard/server';
 import { loadConfig } from './config/defaults';
 import { SessionStore } from './core/session';
@@ -131,6 +132,12 @@ export async function createShrimpServer(): Promise<ShrimpServer> {
 
   registry.register(agents);
   await agents.start();
+
+  // Scheduler — repeating tasks and reminders
+  const schedulerCap = new SchedulerCapability();
+  registry.register(schedulerCap);
+  await schedulerCap.start();
+  console.log('  ⏰ Scheduler active');
 
   // Agent loop (verbose by default — see the agent think)
   const loop = new AgentLoop({
