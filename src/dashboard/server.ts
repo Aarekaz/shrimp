@@ -36,6 +36,7 @@ export function createDashboard(config: DashboardConfig) {
         'agent:thinking', 'agent:tool-call', 'agent:tool-result',
         'agent:response', 'agent:chunk', 'agent:error', 'channel:message',
         'memory:fact-updated',
+        'agent-task:spawned', 'agent-task:completed', 'agent-task:failed', 'agent-task:message',
       ] as const;
 
       for (const event of events) {
@@ -98,6 +99,12 @@ export function createDashboard(config: DashboardConfig) {
   // --- REST: cost tracking ---
   app.get('/api/cost', (c) => {
     return c.json(loop.costTracker.getState());
+  });
+
+  // --- REST: agent task events ---
+  app.get('/api/tasks', (c) => {
+    const taskEvents = bus.getHistory().filter(e => e.event.startsWith('agent-task:'));
+    return c.json(taskEvents);
   });
 
   // --- REST: session list ---
