@@ -126,6 +126,7 @@ export class AgentLoop {
         this.persistMessage({ role: 'assistant', content });
         this.bus.emit('agent:response', { content, tokensIn: 0, tokensOut: estimatedTokens });
         yield { type: 'response', content, tokensIn: 0, tokensOut: estimatedTokens };
+        this.maybeLearnProcedure(userText);
         yield { type: 'done', content };
         return;
       }
@@ -274,6 +275,23 @@ export class AgentLoop {
     }
   }
 
+  private maybeLearnProcedure(userText: string): void {
+    const recentAssistant = this.conversationHistory
+      .filter(m => m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0);
+
+    if (recentAssistant.length === 0) return;
+
+    const lastTurn = recentAssistant[recentAssistant.length - 1];
+    const toolNames = lastTurn.toolCalls?.map(tc => tc.name) ?? [];
+
+    if (toolNames.length < 3) return;
+
+    this.bus.emit('memory:fact-updated', {
+      key: `procedure:${toolNames.join('→')}`,
+      newValue: `When user says "${userText.slice(0, 50)}", call: ${toolNames.join(' → ')}`,
+    });
+  }
+
   private buildCoordinatorPrompt(): string {
     const tools = this.registry.allTools();
     const toolDescriptions = tools
@@ -334,7 +352,8 @@ Guidelines:
 - Use memory tools to store important facts your owner tells you.
 - Only call memory.recall when the user asks you something you need to look up. Don't recall on every message.
 - For simple greetings, just respond naturally without calling any tools.
-- When you have a final answer, respond with text — don't call tools unnecessarily.`;
+- When you have a final answer, respond with text — don't call tools unnecessarily.
+- If a task seems familiar, check memory.procedures to see if you've learned a pattern for it.`;
 
     this.cachedToolCount = currentToolCount;
     return this.cachedSystemPrompt;

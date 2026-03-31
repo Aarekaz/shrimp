@@ -3,14 +3,19 @@ import type { Capability, Tool, MemoryEntry } from '../../core/types';
 import { ok } from '../../core/types';
 import { WorkingMemory } from './working';
 import { SQLiteMemoryStore } from './sqlite-store';
+import { ProcedureStore } from './procedures';
 
 export class MemoryCapability implements Capability {
   name = 'memory';
   description = 'Store and recall facts, episodes, and procedures';
   private store: WorkingMemory | SQLiteMemoryStore;
+  private procedureStore?: ProcedureStore;
 
   constructor(dbPath?: string) {
     this.store = dbPath ? new SQLiteMemoryStore(dbPath) : new WorkingMemory();
+    if (dbPath) {
+      this.procedureStore = new ProcedureStore(dbPath.replace('.db', '-procedures.db'));
+    }
   }
 
   get tools(): Tool[] {
@@ -65,6 +70,25 @@ export class MemoryCapability implements Capability {
         handler: async (input: Record<string, unknown>) => {
           await this.store.forget(input.id as string);
           return ok({ title: 'Memory forgotten', output: { forgotten: true } });
+        },
+      },
+      {
+        name: 'memory.procedures',
+        description: 'Look up learned procedures — multi-step patterns the agent has seen before. Check this when a task seems familiar.',
+        parameters: z.object({ query: z.string().describe('What kind of task to look up') }),
+        isReadOnly: true,
+        approvalLevel: 'auto' as const,
+        handler: async (input: Record<string, unknown>) => {
+          if (!this.procedureStore) {
+            return ok({ title: 'No procedure store', output: { found: false } });
+          }
+          const proc = this.procedureStore.findByTrigger(input.query as string);
+          if (!proc) return ok({ title: 'No procedure found', output: { found: false } });
+          this.procedureStore.incrementUsage(proc.id);
+          return ok({
+            title: `Procedure: ${proc.name}`,
+            output: { found: true, name: proc.name, steps: proc.steps, usedCount: proc.usedCount },
+          });
         },
       },
     ];
