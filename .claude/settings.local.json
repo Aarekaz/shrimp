@@ -16,7 +16,10 @@
       "Bash(curl -s https://openrouter.ai/api/v1/models)",
       "Bash(curl:*)",
       "Bash(python3 -m json.tool)",
-      "Bash(bun:*)"
+      "Bash(bun:*)",
+      "WebFetch(domain:docs.composio.dev)",
+      "WebFetch(domain:supermemory.ai)",
+      "WebFetch(domain:github.com)"
     ]
   }
 }
