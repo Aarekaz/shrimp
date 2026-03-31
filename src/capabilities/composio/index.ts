@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { Composio } from '@composio/core';
 import type { Capability, Tool } from '../../core/types';
 import { ok, err } from '../../core/types';
@@ -66,7 +67,10 @@ export class ComposioCapability implements Capability {
     return {
       name: `composio.${raw.name}`,
       description: raw.description || `Composio tool: ${raw.name}`,
-      inputSchema: {
+      // Pass-through schema — Composio validates input itself
+      parameters: z.record(z.unknown()),
+      // Preserve the original JSON Schema so allToolsForLLM() exposes accurate parameter info
+      rawInputSchema: {
         type: 'object',
         properties: raw.parameters?.properties ?? {},
         required: raw.parameters?.required ?? [],
@@ -78,7 +82,7 @@ export class ComposioCapability implements Capability {
             userId,
             arguments: input,
           });
-          return ok(result);
+          return ok({ title: `composio.${raw.name}`, output: result });
         } catch (e: any) {
           return err({
             code: 'COMPOSIO_ERROR',

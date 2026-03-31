@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { Capability, Tool, ModelAdapter, Message } from '../../core/types';
 import { ok, err } from '../../core/types';
 
@@ -97,33 +98,23 @@ export class AgentsCapability implements Capability {
       {
         name: 'agents.list',
         description: 'List all available sub-agents and their specialties.',
-        inputSchema: { type: 'object', properties: {} },
+        parameters: z.object({}),
         approvalLevel: 'auto' as const,
         handler: async () => {
           const list = Array.from(this.agents.entries()).map(([name, agent]) => ({
             name,
             description: agent.description,
           }));
-          return ok({ agents: list });
+          return ok({ title: 'Available agents', output: { agents: list } });
         },
       },
       {
         name: 'agents.delegate',
         description: 'Delegate a task to a specialized sub-agent. Use this when a task is better handled by a specialist (e.g., coding, research, writing).',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            agent: {
-              type: 'string',
-              description: 'Name of the sub-agent to delegate to. Use agents.list to see available agents.',
-            },
-            task: {
-              type: 'string',
-              description: 'The task description to give the sub-agent. Be specific about what you need.',
-            },
-          },
-          required: ['agent', 'task'],
-        },
+        parameters: z.object({
+          agent: z.string().describe('Name of the sub-agent to delegate to. Use agents.list to see available agents.'),
+          task: z.string().describe('The task description to give the sub-agent. Be specific about what you need.'),
+        }),
         approvalLevel: 'notify' as const,
         handler: async (input: Record<string, unknown>) => {
           const agentName = input.agent as string;
@@ -141,7 +132,7 @@ export class AgentsCapability implements Capability {
 
           try {
             const result = await agent.run(task);
-            return ok({ agent: agentName, result });
+            return ok({ title: `Agent: ${agentName}`, output: { agent: agentName, result } });
           } catch (e: any) {
             return err({
               code: 'AGENT_ERROR',

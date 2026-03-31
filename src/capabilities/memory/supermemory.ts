@@ -1,5 +1,6 @@
+import { z } from 'zod';
 import Supermemory from 'supermemory';
-import type { Capability, Tool, MemoryEntry } from '../../core/types';
+import type { Capability, Tool } from '../../core/types';
 import { ok, err } from '../../core/types';
 
 export interface SuperMemoryConfig {
@@ -23,14 +24,10 @@ export class SuperMemoryCapability implements Capability {
       {
         name: 'memory.store',
         description: 'Store a fact, episode, or procedure in persistent memory. This survives restarts. Use this to remember important information about the user or tasks.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            content: { type: 'string', description: 'The information to remember' },
-            type: { type: 'string', enum: ['fact', 'episode', 'procedure'], description: 'Type of memory' },
-          },
-          required: ['content', 'type'],
-        },
+        parameters: z.object({
+          content: z.string().describe('The information to remember'),
+          type: z.enum(['fact', 'episode', 'procedure']).describe('Type of memory'),
+        }),
         approvalLevel: 'auto' as const,
         handler: async (input: Record<string, unknown>) => {
           try {
@@ -39,7 +36,7 @@ export class SuperMemoryCapability implements Capability {
               content,
               containerTag: this.userId,
             });
-            return ok({ stored: true, type: input.type });
+            return ok({ title: 'Memory stored', output: { stored: true, type: input.type } });
           } catch (e: any) {
             return err({
               code: 'SUPERMEMORY_STORE_ERROR',
@@ -52,13 +49,9 @@ export class SuperMemoryCapability implements Capability {
       {
         name: 'memory.recall',
         description: 'Recall information from persistent memory. Uses semantic search to find relevant memories. Returns the most relevant results for your query.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            query: { type: 'string', description: 'What to search for in memory' },
-          },
-          required: ['query'],
-        },
+        parameters: z.object({
+          query: z.string().describe('What to search for'),
+        }),
         approvalLevel: 'auto' as const,
         handler: async (input: Record<string, unknown>) => {
           try {
@@ -70,14 +63,17 @@ export class SuperMemoryCapability implements Capability {
             const results = (profile as any)?.searchResults?.results ?? [];
 
             if (results.length === 0) {
-              return ok({ results: [], message: 'No matching memories found.' });
+              return ok({ title: 'Memory recall', output: { results: [], message: 'No matching memories found.' } });
             }
 
             return ok({
-              results: results.map((r: any) => ({
-                content: r.content ?? r.text ?? JSON.stringify(r),
-                score: r.score,
-              })),
+              title: 'Memory recall',
+              output: {
+                results: results.map((r: any) => ({
+                  content: r.content ?? r.text ?? JSON.stringify(r),
+                  score: r.score,
+                })),
+              },
             });
           } catch (e: any) {
             return err({
@@ -91,17 +87,14 @@ export class SuperMemoryCapability implements Capability {
       {
         name: 'memory.profile',
         description: 'Get the user profile — a summary of everything known about the user from past interactions.',
-        inputSchema: {
-          type: 'object',
-          properties: {},
-        },
+        parameters: z.object({}),
         approvalLevel: 'auto' as const,
         handler: async () => {
           try {
             const profile = await this.client.profile({
               containerTag: this.userId,
             });
-            return ok({ profile });
+            return ok({ title: 'User profile', output: { profile } });
           } catch (e: any) {
             return err({
               code: 'SUPERMEMORY_PROFILE_ERROR',

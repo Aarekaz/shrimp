@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { Capability, Tool, MemoryEntry } from '../../core/types';
 import { ok } from '../../core/types';
 import { WorkingMemory } from './working';
@@ -16,14 +17,10 @@ export class MemoryCapability implements Capability {
       {
         name: 'memory.store',
         description: 'Store a fact, episode, or procedure in memory. Use this to remember important information.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            content: { type: 'string', description: 'The information to remember' },
-            type: { type: 'string', enum: ['fact', 'episode', 'procedure'], description: 'Type of memory' },
-          },
-          required: ['content', 'type'],
-        },
+        parameters: z.object({
+          content: z.string().describe('The information to remember'),
+          type: z.enum(['fact', 'episode', 'procedure']).describe('Type of memory'),
+        }),
         approvalLevel: 'auto' as const,
         handler: async (input: Record<string, unknown>) => {
           const entry: MemoryEntry = {
@@ -33,42 +30,37 @@ export class MemoryCapability implements Capability {
             timestamp: new Date(),
           };
           await this.memory.store(entry);
-          return ok({ stored: entry.id });
+          return ok({ title: 'Memory stored', output: { stored: entry.id } });
         },
       },
       {
         name: 'memory.recall',
         description: 'Recall information from memory. Returns recent and relevant entries.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            query: { type: 'string', description: 'What to search for in memory' },
-          },
-          required: ['query'],
-        },
+        parameters: z.object({
+          query: z.string().describe('What to search for'),
+        }),
         approvalLevel: 'auto' as const,
         handler: async (input: Record<string, unknown>) => {
           const results = await this.memory.recall(input.query as string);
           if (results.length === 0) {
-            return ok({ results: [], message: 'No matching memories found.' });
+            return ok({ title: 'Memory recall', output: { results: [], message: 'No matching memories found.' } });
           }
-          return ok({ results: results.map(r => ({ type: r.type, content: r.content })) });
+          return ok({
+            title: 'Memory recall',
+            output: { results: results.map(r => ({ type: r.type, content: r.content })) },
+          });
         },
       },
       {
         name: 'memory.forget',
         description: 'Remove a specific memory entry by its ID.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            id: { type: 'string', description: 'The ID of the memory to forget' },
-          },
-          required: ['id'],
-        },
+        parameters: z.object({
+          id: z.string().describe('The ID of the memory to forget'),
+        }),
         approvalLevel: 'auto' as const,
         handler: async (input: Record<string, unknown>) => {
           await this.memory.forget(input.id as string);
-          return ok({ forgotten: true });
+          return ok({ title: 'Memory forgotten', output: { forgotten: true } });
         },
       },
     ];

@@ -1,5 +1,6 @@
-import type { Capability, Tool } from '../../core/types';
-import { ok, err } from '../../core/types';
+import { z } from 'zod';
+import type { Capability, Tool, ToolResult } from '../../core/types';
+import { ok, err, type Result } from '../../core/types';
 
 export interface ComputerConfig {
   baseUrl: string; // e.g., http://localhost:8000 for Open Computer Use
@@ -19,16 +20,12 @@ export class ComputerCapability implements Capability {
       {
         name: 'computer.browse',
         description: 'Navigate to a URL in the browser and return the page content or a screenshot.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            url: { type: 'string', description: 'The URL to navigate to' },
-            action: { type: 'string', enum: ['screenshot', 'content', 'click', 'type'], description: 'What to do on the page' },
-            selector: { type: 'string', description: 'CSS selector for click/type actions' },
-            text: { type: 'string', description: 'Text to type (for type action)' },
-          },
-          required: ['url'],
-        },
+        parameters: z.object({
+          url: z.string(),
+          action: z.enum(['screenshot', 'content', 'click', 'type']).optional(),
+          selector: z.string().optional(),
+          text: z.string().optional(),
+        }),
         approvalLevel: 'auto' as const,
         handler: async (input: Record<string, unknown>) => {
           return this.sendCommand('browser', input);
@@ -37,14 +34,10 @@ export class ComputerCapability implements Capability {
       {
         name: 'computer.terminal',
         description: 'Run a command in the terminal. Returns stdout and stderr.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            command: { type: 'string', description: 'The shell command to execute' },
-            workdir: { type: 'string', description: 'Working directory (optional)' },
-          },
-          required: ['command'],
-        },
+        parameters: z.object({
+          command: z.string(),
+          workdir: z.string().optional(),
+        }),
         approvalLevel: 'approve' as const,
         handler: async (input: Record<string, unknown>) => {
           return this.sendCommand('terminal', input);
@@ -53,10 +46,7 @@ export class ComputerCapability implements Capability {
       {
         name: 'computer.screenshot',
         description: 'Take a screenshot of the current desktop state.',
-        inputSchema: {
-          type: 'object',
-          properties: {},
-        },
+        parameters: z.object({}),
         approvalLevel: 'auto' as const,
         handler: async () => {
           return this.sendCommand('screenshot', {});
@@ -65,15 +55,11 @@ export class ComputerCapability implements Capability {
       {
         name: 'computer.click',
         description: 'Click at a specific position on the desktop.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            x: { type: 'number', description: 'X coordinate' },
-            y: { type: 'number', description: 'Y coordinate' },
-            button: { type: 'string', enum: ['left', 'right', 'middle'], description: 'Mouse button' },
-          },
-          required: ['x', 'y'],
-        },
+        parameters: z.object({
+          x: z.number(),
+          y: z.number(),
+          button: z.enum(['left', 'right', 'middle']).optional(),
+        }),
         approvalLevel: 'notify' as const,
         handler: async (input: Record<string, unknown>) => {
           return this.sendCommand('click', input);
@@ -82,13 +68,9 @@ export class ComputerCapability implements Capability {
       {
         name: 'computer.type',
         description: 'Type text using the keyboard.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            text: { type: 'string', description: 'Text to type' },
-          },
-          required: ['text'],
-        },
+        parameters: z.object({
+          text: z.string(),
+        }),
         approvalLevel: 'notify' as const,
         handler: async (input: Record<string, unknown>) => {
           return this.sendCommand('type', input);
@@ -97,13 +79,9 @@ export class ComputerCapability implements Capability {
       {
         name: 'computer.file_read',
         description: 'Read a file from the computer.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            path: { type: 'string', description: 'Absolute file path' },
-          },
-          required: ['path'],
-        },
+        parameters: z.object({
+          path: z.string(),
+        }),
         approvalLevel: 'auto' as const,
         handler: async (input: Record<string, unknown>) => {
           return this.sendCommand('file_read', input);
@@ -112,14 +90,10 @@ export class ComputerCapability implements Capability {
       {
         name: 'computer.file_write',
         description: 'Write content to a file on the computer.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            path: { type: 'string', description: 'Absolute file path' },
-            content: { type: 'string', description: 'File content' },
-          },
-          required: ['path', 'content'],
-        },
+        parameters: z.object({
+          path: z.string(),
+          content: z.string(),
+        }),
         approvalLevel: 'approve' as const,
         handler: async (input: Record<string, unknown>) => {
           return this.sendCommand('file_write', input);
@@ -131,7 +105,7 @@ export class ComputerCapability implements Capability {
   private async sendCommand(
     action: string,
     params: Record<string, unknown>,
-  ) {
+  ): Promise<Result<ToolResult>> {
     try {
       const response = await fetch(`${this.baseUrl}/api/agent`, {
         method: 'POST',
@@ -149,7 +123,7 @@ export class ComputerCapability implements Capability {
       }
 
       const data = await response.json();
-      return ok(data);
+      return ok({ title: `computer.${action}`, output: data });
     } catch (e: any) {
       return err({
         code: 'COMPUTER_CONNECTION_ERROR',
