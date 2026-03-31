@@ -42,7 +42,7 @@ export interface Tool {
   rawInputSchema?: Record<string, unknown>;
   approvalLevel: ApprovalLevel;
   isReadOnly?: boolean;    // true = safe to run in parallel with other read-only tools
-  handler: (input: Record<string, unknown>) => Promise<Result<ToolResult>>;
+  handler: (input: Record<string, unknown>, ctx?: ToolUseContext) => Promise<Result<ToolResult>>;
 }
 
 // --- Model Types ---
@@ -122,6 +122,26 @@ export interface ApprovalResult {
   verdict: 'approved' | 'denied' | 'modified';
   modifiedInput?: Record<string, unknown>;
 }
+
+// --- Tool Use Context ---
+export interface ToolUseContext {
+  bus: import('./events').ShrimpEventBus;
+  registry: import('./registry').CapabilityRegistry;
+  model: ModelAdapter;
+  identity: { name: string; owner: string };
+  sessionId?: string;
+  abortSignal?: AbortSignal;
+}
+
+// --- Loop Events ---
+export type LoopEvent =
+  | { type: 'thinking'; iteration: number; maxIterations: number }
+  | { type: 'chunk'; delta: string }
+  | { type: 'tool-call'; toolName: string; input: Record<string, unknown> }
+  | { type: 'tool-result'; toolName: string; result: unknown; durationMs: number }
+  | { type: 'response'; content: string; tokensIn: number; tokensOut: number }
+  | { type: 'error'; message: string }
+  | { type: 'done'; content: string };
 
 // --- Memory ---
 export interface MemoryEntry {

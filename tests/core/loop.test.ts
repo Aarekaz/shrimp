@@ -4,7 +4,7 @@ import { AgentLoop } from '../../src/core/loop';
 import { ShrimpEventBus } from '../../src/core/events';
 import { CapabilityRegistry } from '../../src/core/registry';
 import { ApprovalGate } from '../../src/core/approval';
-import type { ModelAdapter, ModelResponse, LLMTool, Message, Capability } from '../../src/core/types';
+import type { ModelAdapter, ModelResponse, ModelChunk, LLMTool, Message, Capability, LoopEvent } from '../../src/core/types';
 import { ok } from '../../src/core/types';
 
 function createMockModel(responses: ModelResponse[]): ModelAdapter {
@@ -13,10 +13,29 @@ function createMockModel(responses: ModelResponse[]): ModelAdapter {
     async generate(_messages: Message[], _tools?: LLMTool[]): Promise<ModelResponse> {
       return responses[callCount++] ?? { content: 'No response', usage: { inputTokens: 0, outputTokens: 0 } };
     },
-    async *stream() {
-      yield { delta: 'mock' };
+    async *stream(_messages: Message[], _tools?: LLMTool[]): AsyncIterable<ModelChunk> {
+      const resp = responses[callCount++] ?? { content: 'No response', usage: { inputTokens: 0, outputTokens: 0 } };
+      if (resp.content) {
+        yield { delta: resp.content };
+      }
+      if (resp.toolCalls) {
+        for (const tc of resp.toolCalls) {
+          yield {
+            delta: '',
+            toolCallDelta: { id: tc.id, name: tc.name, inputDelta: JSON.stringify(tc.input) },
+          };
+        }
+      }
     },
   };
+}
+
+async function collectEvents(gen: AsyncGenerator<LoopEvent>): Promise<LoopEvent[]> {
+  const events: LoopEvent[] = [];
+  for await (const event of gen) {
+    events.push(event);
+  }
+  return events;
 }
 
 describe('AgentLoop', () => {
@@ -88,5 +107,59 @@ describe('AgentLoop', () => {
     const loop = new AgentLoop({ bus, registry, gate, model, identity: { name: 'Shrimp', owner: 'test' }, maxIterations: 3 });
     const response = await loop.handleMessage('Do something');
     expect(response).toContain('limit');
+  });
+
+  it('run() yields typed LoopEvents', async () => {
+    const bus = new ShrimpEventBus();
+    const registry = new CapabilityRegistry();
+    const gate = new ApprovalGate({}, 'approve');
+    const model = createMockModel([
+      { content: 'Hello!', usage: { inputTokens: 10, outputTokens: 5 } },
+    ]);
+
+    const loop = new AgentLoop({ bus, registry, gate, model, identity: { name: 'Shrimp', owner: 'test' } });
+    const events = await collectEvents(loop.run('Hi'));
+
+    const types = events.map(e => e.type);
+    expect(types).toContain('thinking');
+    expect(types).toContain('chunk');
+    expect(types).toContain('done');
+
+    const done = events.find(e => e.type === 'done') as any;
+    expect(done.content).toBe('Hello!');
+  });
+
+  it('run() yields tool-call and tool-result events', async () => {
+    const bus = new ShrimpEventBus();
+    const registry = new CapabilityRegistry();
+    const gate = new ApprovalGate({}, 'auto');
+
+    const cap: Capability = {
+      name: 'memory',
+      description: 'Memory',
+      tools: [{
+        name: 'memory.store',
+        description: 'Store',
+        parameters: z.object({ content: z.string() }),
+        approvalLevel: 'auto',
+        handler: async () => ok({ title: 'Stored', output: { stored: true } }),
+      }],
+      async start() {},
+      async stop() {},
+    };
+    registry.register(cap);
+
+    const model = createMockModel([
+      { content: '', toolCalls: [{ id: 'c1', name: 'memory.store', input: { content: 'test' } }], usage: { inputTokens: 5, outputTokens: 5 } },
+      { content: 'Done.', usage: { inputTokens: 10, outputTokens: 3 } },
+    ]);
+
+    const loop = new AgentLoop({ bus, registry, gate, model, identity: { name: 'Shrimp', owner: 'test' } });
+    const events = await collectEvents(loop.run('Store something'));
+
+    const types = events.map(e => e.type);
+    expect(types).toContain('tool-call');
+    expect(types).toContain('tool-result');
+    expect(types).toContain('done');
   });
 });

@@ -1,4 +1,4 @@
-import type { ModelAdapter, Message, Tool, ToolCall } from './types';
+import type { ModelAdapter, Message, ToolCall, ToolUseContext, LoopEvent } from './types';
 import type { ShrimpEventBus } from './events';
 import type { CapabilityRegistry } from './registry';
 import type { ApprovalGate } from './approval';
@@ -37,7 +37,7 @@ export class AgentLoop {
   private contextManager: ContextManager;
   readonly costTracker: CostTracker;
 
-  // Memoized system prompt — only rebuilt when tools change
+  // Memoized system prompt
   private cachedSystemPrompt: string | null = null;
   private cachedToolCount: number = -1;
 
@@ -59,23 +59,13 @@ export class AgentLoop {
     }
   }
 
-  private persistMessage(message: Message): void {
-    this.conversationHistory.push(message);
-    if (this.sessionStore && this.sessionId) {
-      this.sessionStore.addMessage(this.sessionId, message);
-    }
-  }
+  // --- The single async generator that powers everything ---
 
-  private log(icon: string, msg: string): void {
-    if (this.verbose) {
-      console.log(`  ${icon} ${msg}`);
-    }
-  }
-
-  async handleMessage(userText: string): Promise<string> {
+  async *run(userText: string): AsyncGenerator<LoopEvent> {
     this.persistMessage({ role: 'user', content: userText });
 
     const systemPrompt = this.buildSystemPrompt();
+    const ctx = this.buildToolContext();
     let iterations = 0;
 
     while (iterations < this.maxIterations) {
@@ -87,83 +77,129 @@ export class AgentLoop {
         ...fittedHistory,
       ];
 
-      const tools = this.registry.allToolsForLLM();
+      const llmTools = this.registry.allToolsForLLM();
       this.log('🧠', `thinking... (iteration ${iterations}/${this.maxIterations})`);
+      yield { type: 'thinking', iteration: iterations, maxIterations: this.maxIterations };
       this.bus.emit('agent:thinking', { iteration: iterations, maxIterations: this.maxIterations });
-      const response = await this.model.generate(messages, tools.length > 0 ? tools : undefined);
-      this.costTracker.add(this.modelName, response.usage.inputTokens, response.usage.outputTokens);
-      this.log('📊', `tokens: ${response.usage.inputTokens} in / ${response.usage.outputTokens} out (${this.costTracker.format()})`);
 
-      if (!response.toolCalls || response.toolCalls.length === 0) {
-        this.persistMessage({ role: 'assistant', content: response.content });
-        this.bus.emit('agent:response', { content: response.content, tokensIn: response.usage.inputTokens, tokensOut: response.usage.outputTokens });
-        return response.content;
+      // Stream from model
+      let content = '';
+      const toolCallBuffers = new Map<number, { id: string; name: string; args: string }>();
+
+      for await (const chunk of this.model.stream(messages, llmTools.length > 0 ? llmTools : undefined)) {
+        if (chunk.delta) {
+          content += chunk.delta;
+          yield { type: 'chunk', delta: chunk.delta };
+        }
+
+        if (chunk.toolCallDelta) {
+          const idx = 0;
+          const existing = toolCallBuffers.get(idx) ?? { id: '', name: '', args: '' };
+          if (chunk.toolCallDelta.id) existing.id = chunk.toolCallDelta.id;
+          if (chunk.toolCallDelta.name) existing.name = chunk.toolCallDelta.name;
+          if (chunk.toolCallDelta.inputDelta) existing.args += chunk.toolCallDelta.inputDelta;
+          toolCallBuffers.set(idx, existing);
+        }
       }
 
-      if (response.content) {
-        this.log('💭', `thought: "${response.content}"`);
+      // Estimate cost (streaming doesn't give us exact counts)
+      const estimatedTokens = Math.ceil(content.length / 4);
+      this.costTracker.add(this.modelName, 0, estimatedTokens);
+
+      // Convert buffered tool calls
+      const toolCalls: ToolCall[] = [];
+      for (const [, buf] of toolCallBuffers) {
+        if (buf.name) {
+          try {
+            toolCalls.push({ id: buf.id || crypto.randomUUID(), name: buf.name, input: JSON.parse(buf.args || '{}') });
+          } catch {
+            toolCalls.push({ id: buf.id || crypto.randomUUID(), name: buf.name, input: {} });
+          }
+        }
       }
 
-      this.persistMessage({
-        role: 'assistant',
-        content: response.content,
-        toolCalls: response.toolCalls,
-      });
+      if (toolCalls.length === 0) {
+        this.persistMessage({ role: 'assistant', content });
+        this.bus.emit('agent:response', { content, tokensIn: 0, tokensOut: estimatedTokens });
+        yield { type: 'response', content, tokensIn: 0, tokensOut: estimatedTokens };
+        yield { type: 'done', content };
+        return;
+      }
 
-      await this.executeToolBatch(response.toolCalls);
+      // Tool calls — persist assistant message, execute tools
+      this.persistMessage({ role: 'assistant', content, toolCalls });
+
+      // Partition and execute
+      const readOnly: ToolCall[] = [];
+      const writable: ToolCall[] = [];
+      for (const tc of toolCalls) {
+        const tool = this.registry.resolveTool(tc.name);
+        if (tool?.isReadOnly) readOnly.push(tc);
+        else writable.push(tc);
+      }
+
+      if (readOnly.length > 0) {
+        this.log('⚡', `running ${readOnly.length} read-only tool(s) in parallel`);
+        const results = await Promise.all(readOnly.map(tc => this.executeToolWithEvents(tc, ctx)));
+        for (const event of results.flat()) yield event;
+      }
+
+      for (const tc of writable) {
+        const events = await this.executeToolWithEvents(tc, ctx);
+        for (const event of events) yield event;
+      }
     }
 
-    const limitMsg = `I reached my reasoning limit (${this.maxIterations} iterations). Here's what I have so far.`;
+    const limitMsg = `I reached my reasoning limit (${this.maxIterations} iterations).`;
     this.persistMessage({ role: 'assistant', content: limitMsg });
-    return limitMsg;
+    yield { type: 'error', message: limitMsg };
+    yield { type: 'done', content: limitMsg };
   }
 
-  private async executeToolBatch(toolCalls: ToolCall[]): Promise<void> {
-    // Partition: read-only tools run in parallel, write tools run serially
-    const readOnly: ToolCall[] = [];
-    const writable: ToolCall[] = [];
+  // --- Convenience wrappers ---
 
-    for (const tc of toolCalls) {
-      const tool = this.registry.resolveTool(tc.name);
-      if (tool?.isReadOnly) {
-        readOnly.push(tc);
-      } else {
-        writable.push(tc);
+  async handleMessage(userText: string): Promise<string> {
+    let finalContent = '';
+    for await (const event of this.run(userText)) {
+      if (event.type === 'done') {
+        finalContent = event.content;
       }
     }
+    return finalContent;
+  }
 
-    // Run read-only tools in parallel
-    if (readOnly.length > 0) {
-      this.log('⚡', `running ${readOnly.length} read-only tool(s) in parallel`);
-      const promises = readOnly.map(tc => this.executeAndPersistTool(tc));
-      await Promise.all(promises);
-    }
-
-    // Run write tools serially
-    for (const tc of writable) {
-      await this.executeAndPersistTool(tc);
+  async *handleMessageStreaming(userText: string): AsyncGenerator<string> {
+    for await (const event of this.run(userText)) {
+      if (event.type === 'chunk') {
+        yield event.delta;
+      }
     }
   }
 
-  private async executeAndPersistTool(toolCall: ToolCall): Promise<void> {
+  // --- Tool execution ---
+
+  private async executeToolWithEvents(toolCall: ToolCall, ctx: ToolUseContext): Promise<LoopEvent[]> {
+    const events: LoopEvent[] = [];
+
     this.log('🔧', `calling ${toolCall.name}(${JSON.stringify(toolCall.input)})`);
     this.bus.emit('agent:tool-call', { toolName: toolCall.name, input: toolCall.input });
+    events.push({ type: 'tool-call', toolName: toolCall.name, input: toolCall.input });
+
     const start = Date.now();
-    const result = await this.executeTool(toolCall);
+    const result = await this.executeTool(toolCall, ctx);
     const durationMs = Date.now() - start;
+
     this.log('✅', `result: ${JSON.stringify(result)}`);
     this.bus.emit('agent:tool-result', { toolName: toolCall.name, result, durationMs });
+    events.push({ type: 'tool-result', toolName: toolCall.name, result, durationMs });
 
-    // Truncate oversized tool output to prevent blowing context window
     const content = this.truncateToolOutput(result);
-    this.persistMessage({
-      role: 'tool',
-      content,
-      toolCallId: toolCall.id,
-    });
+    this.persistMessage({ role: 'tool', content, toolCallId: toolCall.id });
+
+    return events;
   }
 
-  private async executeTool(toolCall: ToolCall): Promise<unknown> {
+  private async executeTool(toolCall: ToolCall, ctx: ToolUseContext): Promise<unknown> {
     const tool = this.registry.resolveTool(toolCall.name);
 
     if (!tool) {
@@ -179,7 +215,7 @@ export class AgentLoop {
     });
 
     if (approval.verdict === 'denied') {
-      return { error: `Action denied: ${toolCall.name} requires approval level that is currently disabled.` };
+      return { error: `Action denied: ${toolCall.name} is currently disabled.` };
     }
 
     const input = approval.modifiedInput ?? toolCall.input;
@@ -190,7 +226,7 @@ export class AgentLoop {
     }
 
     try {
-      const result = await tool.handler(input);
+      const result = await tool.handler(input, ctx);
       if (result.ok) {
         return result.value.output;
       } else {
@@ -201,8 +237,34 @@ export class AgentLoop {
     }
   }
 
+  // --- Context ---
+
+  private buildToolContext(): ToolUseContext {
+    return {
+      bus: this.bus,
+      registry: this.registry,
+      model: this.model,
+      identity: this.identity,
+      sessionId: this.sessionId,
+    };
+  }
+
+  // --- Helpers ---
+
+  private persistMessage(message: Message): void {
+    this.conversationHistory.push(message);
+    if (this.sessionStore && this.sessionId) {
+      this.sessionStore.addMessage(this.sessionId, message);
+    }
+  }
+
+  private log(icon: string, msg: string): void {
+    if (this.verbose) {
+      console.log(`  ${icon} ${msg}`);
+    }
+  }
+
   private buildSystemPrompt(): string {
-    // Memoize: only rebuild when tool count changes (capability registered/unregistered)
     const currentToolCount = this.registry.allTools().length;
     if (this.cachedSystemPrompt && this.cachedToolCount === currentToolCount) {
       return this.cachedSystemPrompt;
@@ -239,81 +301,11 @@ Guidelines:
     const str = JSON.stringify(output);
     if (str.length <= MAX_TOOL_OUTPUT_CHARS) return str;
 
-    // Find a clean cut point (last newline within preview range)
     const preview = str.slice(0, TOOL_OUTPUT_PREVIEW_CHARS);
     const lastNewline = preview.lastIndexOf('\\n');
     const cutPoint = lastNewline > TOOL_OUTPUT_PREVIEW_CHARS * 0.5 ? lastNewline : TOOL_OUTPUT_PREVIEW_CHARS;
 
     return `[Output truncated — ${str.length} chars, showing first ${cutPoint}]\n${str.slice(0, cutPoint)}\n...\n[Full output available in tool result]`;
-  }
-
-  async *handleMessageStreaming(userText: string): AsyncGenerator<string> {
-    this.persistMessage({ role: 'user', content: userText });
-
-    const systemPrompt = this.buildSystemPrompt();
-    let iterations = 0;
-
-    while (iterations < this.maxIterations) {
-      iterations++;
-
-      const fittedHistory = this.contextManager.fit(this.conversationHistory);
-      const messages: Message[] = [
-        { role: 'system', content: systemPrompt },
-        ...fittedHistory,
-      ];
-
-      const llmTools = this.registry.allToolsForLLM();
-      this.log('🧠', `thinking... (iteration ${iterations}/${this.maxIterations})`);
-      this.bus.emit('agent:thinking', { iteration: iterations, maxIterations: this.maxIterations });
-
-      // Collect stream into content + tool calls
-      let content = '';
-      const toolCallBuffers = new Map<number, { id: string; name: string; args: string }>();
-
-      for await (const chunk of this.model.stream(messages, llmTools.length > 0 ? llmTools : undefined)) {
-        if (chunk.delta) {
-          content += chunk.delta;
-          yield chunk.delta; // Stream to caller
-        }
-
-        if (chunk.toolCallDelta) {
-          const idx = 0; // most APIs send index in the delta, default to 0
-          const existing = toolCallBuffers.get(idx) ?? { id: '', name: '', args: '' };
-          if (chunk.toolCallDelta.id) existing.id = chunk.toolCallDelta.id;
-          if (chunk.toolCallDelta.name) existing.name = chunk.toolCallDelta.name;
-          if (chunk.toolCallDelta.inputDelta) existing.args += chunk.toolCallDelta.inputDelta;
-          toolCallBuffers.set(idx, existing);
-        }
-      }
-
-      // Convert buffered tool calls
-      const toolCalls: ToolCall[] = [];
-      for (const [, buf] of toolCallBuffers) {
-        if (buf.name) {
-          try {
-            toolCalls.push({ id: buf.id || crypto.randomUUID(), name: buf.name, input: JSON.parse(buf.args || '{}') });
-          } catch {
-            toolCalls.push({ id: buf.id || crypto.randomUUID(), name: buf.name, input: {} });
-          }
-        }
-      }
-
-      if (toolCalls.length === 0) {
-        this.persistMessage({ role: 'assistant', content });
-        this.bus.emit('agent:response', { content, tokensIn: 0, tokensOut: 0 });
-        return;
-      }
-
-      // Tool calls found — stop streaming text, execute tools, loop
-      yield '\n'; // visual separator before tool execution
-      this.persistMessage({ role: 'assistant', content, toolCalls });
-
-      await this.executeToolBatch(toolCalls);
-    }
-
-    const limitMsg = `I reached my reasoning limit (${this.maxIterations} iterations).`;
-    this.persistMessage({ role: 'assistant', content: limitMsg });
-    yield limitMsg;
   }
 
   getHistory(): Message[] {
