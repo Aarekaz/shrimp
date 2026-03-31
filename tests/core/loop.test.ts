@@ -1,15 +1,16 @@
 import { describe, it, expect, mock } from 'bun:test';
+import { z } from 'zod';
 import { AgentLoop } from '../../src/core/loop';
 import { ShrimpEventBus } from '../../src/core/events';
 import { CapabilityRegistry } from '../../src/core/registry';
 import { ApprovalGate } from '../../src/core/approval';
-import type { ModelAdapter, ModelResponse, Tool, Message, Capability } from '../../src/core/types';
+import type { ModelAdapter, ModelResponse, LLMTool, Message, Capability } from '../../src/core/types';
 import { ok } from '../../src/core/types';
 
 function createMockModel(responses: ModelResponse[]): ModelAdapter {
   let callCount = 0;
   return {
-    async generate(_messages: Message[], _tools?: Tool[]): Promise<ModelResponse> {
+    async generate(_messages: Message[], _tools?: LLMTool[]): Promise<ModelResponse> {
       return responses[callCount++] ?? { content: 'No response', usage: { inputTokens: 0, outputTokens: 0 } };
     },
     async *stream() {
@@ -37,14 +38,14 @@ describe('AgentLoop', () => {
     const registry = new CapabilityRegistry();
     const gate = new ApprovalGate({}, 'auto');
 
-    const storeFn = mock(async () => ok({ stored: 'abc-123' }));
+    const storeFn = mock(async () => ok({ title: 'Stored', output: { stored: 'abc-123' } }));
     const cap: Capability = {
       name: 'memory',
       description: 'Memory',
       tools: [{
         name: 'memory.store',
         description: 'Store a fact',
-        inputSchema: { type: 'object', properties: { content: { type: 'string' } } },
+        parameters: z.object({ content: z.string() }),
         approvalLevel: 'auto',
         handler: storeFn,
       }],

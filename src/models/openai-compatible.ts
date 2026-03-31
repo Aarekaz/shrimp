@@ -1,4 +1,4 @@
-import type { ModelAdapter, ModelResponse, ModelChunk, Message, Tool, ToolCall } from '../core/types';
+import type { ModelAdapter, ModelResponse, ModelChunk, Message, LLMTool, ToolCall } from '../core/types';
 
 export interface OpenAICompatibleConfig {
   apiKey: string;
@@ -20,7 +20,7 @@ interface OpenAIMessage {
 export class OpenAICompatibleAdapter implements ModelAdapter {
   constructor(private config: OpenAICompatibleConfig) {}
 
-  async generate(messages: Message[], tools?: Tool[]): Promise<ModelResponse> {
+  async generate(messages: Message[], tools?: LLMTool[]): Promise<ModelResponse> {
     const body: Record<string, unknown> = {
       model: this.config.model,
       messages: messages.map(m => this.toOpenAIMessage(m)),
@@ -70,7 +70,7 @@ export class OpenAICompatibleAdapter implements ModelAdapter {
     };
   }
 
-  async *stream(messages: Message[], tools?: Tool[]): AsyncIterable<ModelChunk> {
+  async *stream(messages: Message[], tools?: LLMTool[]): AsyncIterable<ModelChunk> {
     const response = await this.generate(messages, tools);
     yield { delta: response.content };
   }

@@ -61,8 +61,6 @@ describe('OpenAICompatibleAdapter', () => {
         name: 'memory.store',
         description: 'Store a fact',
         inputSchema: { type: 'object', properties: { content: { type: 'string' } } },
-        approvalLevel: 'auto',
-        handler: async () => ({ ok: true, value: {} } as any),
       }],
     );
     expect(capturedBody.tools).toHaveLength(1);

@@ -53,7 +53,7 @@ export class AgentLoop {
         ...this.conversationHistory,
       ];
 
-      const tools = this.registry.allTools();
+      const tools = this.registry.allToolsForLLM();
       this.log('🧠', `thinking... (iteration ${iterations}/${this.maxIterations})`);
       this.bus.emit('agent:thinking', { iteration: iterations, maxIterations: this.maxIterations });
       const response = await this.model.generate(messages, tools.length > 0 ? tools : undefined);
@@ -117,10 +117,15 @@ export class AgentLoop {
 
     const input = approval.modifiedInput ?? toolCall.input;
 
+    const parsed = tool.parameters.safeParse(input);
+    if (!parsed.success) {
+      return { error: `Tool ${toolCall.name} received invalid input: ${parsed.error.message}` };
+    }
+
     try {
       const result = await tool.handler(input);
       if (result.ok) {
-        return result.value;
+        return result.value.output;
       } else {
         return { error: `Tool ${toolCall.name} failed: ${result.error.message}`, retryable: result.error.retryable };
       }
