@@ -10,6 +10,7 @@ import { ComputerCapability } from './capabilities/computer/index';
 import { AgentsCapability } from './capabilities/agents/index';
 import { SchedulerCapability } from './capabilities/scheduler/index';
 import { MCPCapability } from './capabilities/mcp/index';
+import { BrowserCapability } from './capabilities/browser/index';
 import { createDashboard } from './dashboard/server';
 import { loadConfig } from './config/defaults';
 import { SessionStore } from './core/session';
@@ -83,6 +84,17 @@ export async function createShrimpServer(): Promise<ShrimpServer> {
     if (composio.tools.length > 0) {
       registry.register(composio);
     }
+  }
+
+  // Browser — built-in Playwright browser (set SHRIMP_BROWSER=true to enable)
+  if (process.env.SHRIMP_BROWSER === 'true') {
+    const browserCap = new BrowserCapability({
+      headless: process.env.SHRIMP_BROWSER_HEADLESS !== 'false',
+      executablePath: process.env.SHRIMP_CHROME_PATH,
+      sessionPath: process.env.SHRIMP_BROWSER_SESSION ?? './data/browser-session.json',
+    });
+    registry.register(browserCap);
+    await browserCap.start();
   }
 
   // Computer — connect to Open Computer Use if URL is set

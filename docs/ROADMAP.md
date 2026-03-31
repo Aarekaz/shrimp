@@ -44,7 +44,7 @@ Things we saw in the Claude Code architecture that would make Shrimp better.
 - [x] **Session resume** — SHRIMP_RESUME_SESSION=id or /resume in CLI (done)
 - [x] **Prompt caching** — shared prefix across parent and sub-agents (done)
 - [x] **Self-learning** — ProcedureStore captures 3+ tool patterns as reusable procedures (done)
-- [ ] **Browser capability (Playwright)** — built-in, no Open Computer Use dependency
+- [x] **Browser capability (Playwright)** — navigate, click, type, extract, screenshot, forms, tabs (done)
 - [ ] **Calendar integration** — Google Calendar via Composio or direct API
 - [ ] **Payments** — Stripe or virtual card for agent purchases
 

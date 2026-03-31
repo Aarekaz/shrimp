@@ -17,6 +17,7 @@
     "@composio/core": "^0.6.7",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "hono": "^4.12.9",
+    "playwright-core": "^1.58.2",
     "supermemory": "^4.17.0",
     "zod": "^4.3.6"
   }
