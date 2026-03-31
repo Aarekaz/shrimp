@@ -94,6 +94,7 @@ async function main() {
     description: 'Research agent — good at gathering information, summarizing findings, and answering factual questions in depth.',
     model,
     systemPrompt: `You are a research specialist. Your job is to provide thorough, well-structured answers to research questions. Be detailed and cite your reasoning. Organize your response with clear sections when appropriate.`,
+    permissions: { 'memory.*': 'allow', 'agents.*': 'deny', 'computer.*': 'deny' },
   });
 
   agents.addAgent({
@@ -101,6 +102,7 @@ async function main() {
     description: 'Writing agent — drafts emails, messages, documents, and creative content with the right tone.',
     model,
     systemPrompt: `You are a professional writer. Your job is to draft clear, well-written content. Match the tone and format to what's requested — formal for business emails, casual for messages, structured for documents. Always provide the complete draft, ready to use.`,
+    permissions: { 'memory.recall': 'allow', 'agents.*': 'deny', 'computer.*': 'deny' },
   });
 
   agents.addAgent({
@@ -108,6 +110,7 @@ async function main() {
     description: 'Coding agent — writes, reviews, and explains code. Supports any programming language.',
     model,
     systemPrompt: `You are an expert programmer. Your job is to write clean, correct, well-documented code. Always include the programming language. Explain your approach briefly. If reviewing code, point out bugs, improvements, and security issues.`,
+    permissions: { 'memory.*': 'allow', 'computer.*': 'allow', 'agents.*': 'deny' },
   });
 
   agents.addAgent({
@@ -115,6 +118,7 @@ async function main() {
     description: 'Planning agent — breaks down complex tasks into actionable steps, creates schedules, and organizes work.',
     model,
     systemPrompt: `You are a planning specialist. Your job is to take a complex goal and break it into clear, actionable steps. Number each step. Estimate effort where possible. Identify dependencies and blockers. Be practical, not theoretical.`,
+    permissions: { 'memory.*': 'allow', 'agents.*': 'deny', 'computer.*': 'deny' },
   });
 
   registry.register(agents);

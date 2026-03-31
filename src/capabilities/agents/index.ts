@@ -1,6 +1,16 @@
 import { z } from 'zod';
-import type { Capability, Tool, ModelAdapter, Message } from '../../core/types';
+import type { Capability, Tool, LLMTool, ModelAdapter, Message } from '../../core/types';
 import { ok, err } from '../../core/types';
+
+function toolToLLM(tool: Tool): LLMTool {
+  return {
+    name: tool.name,
+    description: tool.description,
+    inputSchema: tool.rawInputSchema ?? { type: 'object', properties: {} },
+  };
+}
+
+export type ToolPermission = 'allow' | 'deny';
 
 export interface SubAgentConfig {
   name: string;
@@ -8,6 +18,7 @@ export interface SubAgentConfig {
   model: ModelAdapter;
   systemPrompt: string;
   tools?: Tool[];
+  permissions?: Record<string, ToolPermission>;
 }
 
 class SubAgent {
@@ -16,6 +27,7 @@ class SubAgent {
   private model: ModelAdapter;
   private systemPrompt: string;
   private tools: Tool[];
+  private permissions: Record<string, ToolPermission>;
 
   constructor(config: SubAgentConfig) {
     this.name = config.name;
@@ -23,9 +35,37 @@ class SubAgent {
     this.model = config.model;
     this.systemPrompt = config.systemPrompt;
     this.tools = config.tools ?? [];
+    this.permissions = config.permissions ?? {};
   }
 
-  async run(task: string): Promise<string> {
+  isAllowed(toolName: string): boolean {
+    const hasRules = Object.keys(this.permissions).length > 0;
+
+    // Exact match first
+    if (toolName in this.permissions) {
+      return this.permissions[toolName] === 'allow';
+    }
+
+    // Glob match (e.g. 'computer.*')
+    for (const [pattern, permission] of Object.entries(this.permissions)) {
+      if (pattern.endsWith('.*')) {
+        const prefix = pattern.slice(0, -1); // 'computer.'
+        if (toolName.startsWith(prefix)) {
+          return permission === 'allow';
+        }
+      }
+    }
+
+    // Default: deny if rules exist but no match; allow if no rules
+    return !hasRules;
+  }
+
+  filterTools(allTools: Tool[]): Tool[] {
+    return allTools.filter(t => this.isAllowed(t.name));
+  }
+
+  async run(task: string, allTools?: Tool[]): Promise<string> {
+    const tools = allTools ? this.filterTools(allTools) : this.filterTools(this.tools);
     const messages: Message[] = [
       { role: 'system', content: this.systemPrompt },
       { role: 'user', content: task },
@@ -39,7 +79,7 @@ class SubAgent {
 
       const response = await this.model.generate(
         messages,
-        this.tools.length > 0 ? this.tools : undefined,
+        tools.length > 0 ? tools.map(toolToLLM) : undefined,
       );
 
       if (!response.toolCalls || response.toolCalls.length === 0) {
@@ -53,7 +93,7 @@ class SubAgent {
       });
 
       for (const toolCall of response.toolCalls) {
-        const tool = this.tools.find(t => t.name === toolCall.name);
+        const tool = tools.find(t => t.name === toolCall.name);
         if (!tool) {
           messages.push({
             role: 'tool',
