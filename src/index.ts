@@ -1,5 +1,6 @@
 import { createShrimpServer } from './server';
 import { CLIChannel } from './capabilities/channels/cli';
+import { formatError } from './core/errors';
 
 async function main() {
   const { bus, loop } = await createShrimpServer();
@@ -16,8 +17,13 @@ async function main() {
         bus.emit('agent:chunk', { delta: chunk });
       }
       process.stdout.write('\n');
-    } catch (e: any) {
-      await cli.send(`Error: ${e.message}`);
+    } catch (e: unknown) {
+      const err = formatError(e);
+      bus.emit('agent:error', { message: err.message });
+      await cli.send(`Error: ${err.message}`);
+      if (err.detail && err.detail !== err.message) {
+        console.log(`  (detail: ${err.detail.slice(0, 150)})`);
+      }
     }
     cli.prompt();
   });

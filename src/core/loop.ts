@@ -234,10 +234,16 @@ export class AgentLoop {
       if (result.ok) {
         return result.value.output;
       } else {
-        return { error: `Tool ${toolCall.name} failed: ${result.error.message}`, retryable: result.error.retryable };
+        const msg = `${toolCall.name}: ${result.error.message}`;
+        this.bus.emit('agent:error', { message: msg });
+        return { error: msg, retryable: result.error.retryable };
       }
-    } catch (e: any) {
-      return { error: `Tool ${toolCall.name} threw: ${e.message}` };
+    } catch (e: unknown) {
+      const { formatError } = await import('./errors');
+      const err = formatError(e);
+      const msg = `${toolCall.name}: ${err.message}`;
+      this.bus.emit('agent:error', { message: msg });
+      return { error: msg };
     }
   }
 

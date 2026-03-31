@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { serveStatic } from 'hono/bun';
 import { streamSSE, stream } from 'hono/streaming';
+import { formatError } from '../core/errors';
 import type { ShrimpEventBus } from '../core/events';
 import type { CapabilityRegistry } from '../core/registry';
 import type { AgentLoop } from '../core/loop';
@@ -90,8 +91,10 @@ export function createDashboard(config: DashboardConfig) {
           await s.write(chunk);
           bus.emit('agent:chunk', { delta: chunk });
         }
-      } catch (e: any) {
-        await s.write(`\n\nError: ${e.message}`);
+      } catch (e: unknown) {
+        const err = formatError(e);
+        bus.emit('agent:error', { message: err.message });
+        await s.write(`\n\nError: ${err.message}`);
       }
     });
   });

@@ -116,10 +116,11 @@ class SubAgent {
             content: JSON.stringify(result.ok ? result.value : result.error),
             toolCallId: toolCall.id,
           });
-        } catch (e: any) {
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
           messages.push({
             role: 'tool',
-            content: JSON.stringify({ error: e.message }),
+            content: JSON.stringify({ error: msg.length > 200 ? msg.slice(0, 200) + '...' : msg }),
             toolCallId: toolCall.id,
           });
         }
