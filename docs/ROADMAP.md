@@ -6,11 +6,11 @@ What to build next, roughly in priority order. Check things off as they land.
 
 Things we saw in the Claude Code architecture that would make Shrimp better.
 
-- [ ] **Tool concurrency** — run read-only tools in parallel, write tools serially. Add `isReadOnly()` to Tool interface. Partition tool calls into batches.
+- [x] **Tool concurrency** — read-only tools run in parallel, writes serial (done)
 - [ ] **ToolUseContext** — replace raw `Record<string, unknown>` handler input with a rich context object. Carry state accessors, file caches, abort signals.
-- [ ] **Memoized system prompt** — cache the system prompt until tools change. Don't rebuild every iteration.
-- [ ] **Cost accumulation** — track total tokens, cost per session, persist to SQLite. Show in dashboard footer.
-- [ ] **Tool output truncation** — auto-truncate oversized tool results before sending to LLM. Configurable limit.
+- [x] **Memoized system prompt** — cached until tool count changes (done)
+- [x] **Cost accumulation** — per-model token/cost tracking, GET /api/cost endpoint (done)
+- [x] **Tool output truncation** — auto-truncate at 50K chars, 2K preview (done)
 - [ ] **Denial tracking** — if a tool keeps getting denied, stop trying it. Escalate to user after N denials.
 - [ ] **Async generator for full loop** — make `handleMessage` itself a generator (not just streaming). Enables cancellation mid-loop.
 - [ ] **Feature gating** — conditional capability loading via build-time flags. Zero cost for disabled features.
