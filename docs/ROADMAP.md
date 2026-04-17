@@ -11,7 +11,7 @@ Things we saw in the Claude Code architecture that would make Shrimp better.
 - [x] **Memoized system prompt** — cached until tool count changes (done)
 - [x] **Cost accumulation** — per-model token/cost tracking, GET /api/cost endpoint (done)
 - [x] **Tool output truncation** — auto-truncate at 50K chars, 2K preview (done)
-- [ ] **Denial tracking** — if a tool keeps getting denied, stop trying it. Escalate to user after N denials.
+- [x] **Denial tracking** — if a tool keeps getting denied, stop trying it. Escalate to user after N denials. (done)
 - [x] **Async generator for full loop** — run() yields typed LoopEvents, handleMessage/handleMessageStreaming are wrappers (done)
 - [ ] **Feature gating** — conditional capability loading via build-time flags. Zero cost for disabled features.
 - [x] **Background agents** — agents.spawn for async fire-and-forget (done)

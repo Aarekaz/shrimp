@@ -162,4 +162,51 @@ describe('AgentLoop', () => {
     expect(types).toContain('tool-result');
     expect(types).toContain('done');
   });
+
+  it('emits approval-needed events and escalates repeated denied tool attempts', async () => {
+    const bus = new ShrimpEventBus();
+    const registry = new CapabilityRegistry();
+    const gate = new ApprovalGate({}, 'approve', { maxConsecutiveDenials: 2 });
+
+    const sendFn = mock(async () => ok({ title: 'Sent', output: { sent: true } }));
+    const approvalEvents: Array<{ taskId: string; question: string; options: string[] }> = [];
+    bus.on('task:approval-needed', (payload) => {
+      approvalEvents.push(payload);
+    });
+
+    const cap: Capability = {
+      name: 'email',
+      description: 'Email',
+      tools: [{
+        name: 'email.send',
+        description: 'Send email',
+        parameters: z.object({ to: z.string().email(), body: z.string() }),
+        approvalLevel: 'approve',
+        handler: sendFn,
+      }],
+      async start() {},
+      async stop() {},
+    };
+    registry.register(cap);
+
+    const model = createMockModel([
+      { content: '', toolCalls: [{ id: 'c1', name: 'email.send', input: { to: 'test@example.com', body: 'hi' } }], usage: { inputTokens: 5, outputTokens: 5 } },
+      { content: '', toolCalls: [{ id: 'c2', name: 'email.send', input: { to: 'test@example.com', body: 'hi' } }], usage: { inputTokens: 5, outputTokens: 5 } },
+      { content: 'I need your approval before I can send that email.', usage: { inputTokens: 10, outputTokens: 8 } },
+    ]);
+
+    const loop = new AgentLoop({ bus, registry, gate, model, identity: { name: 'Shrimp', owner: 'test' } });
+    const events = await collectEvents(loop.run('Send that email'));
+
+    expect(sendFn).not.toHaveBeenCalled();
+    expect(approvalEvents).toHaveLength(2);
+
+    const toolResults = events.filter((event): event is Extract<LoopEvent, { type: 'tool-result' }> => event.type === 'tool-result');
+    expect(toolResults).toHaveLength(2);
+    expect(JSON.stringify(toolResults[0].result)).toContain('requires user approval');
+    expect(JSON.stringify(toolResults[1].result)).toContain('Stop retrying');
+
+    const done = events.find((event): event is Extract<LoopEvent, { type: 'done' }> => event.type === 'done');
+    expect(done?.content).toBe('I need your approval before I can send that email.');
+  });
 });

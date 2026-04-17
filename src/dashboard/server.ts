@@ -36,7 +36,7 @@ export function createDashboard(config: DashboardConfig) {
       const events = [
         'agent:thinking', 'agent:tool-call', 'agent:tool-result',
         'agent:response', 'agent:chunk', 'agent:error', 'channel:message',
-        'memory:fact-updated',
+        'memory:fact-updated', 'task:approval-needed',
         'agent-task:spawned', 'agent-task:completed', 'agent-task:failed', 'agent-task:message',
       ] as const;
 

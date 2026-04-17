@@ -219,8 +219,29 @@ export class AgentLoop {
       level: tool.approvalLevel,
     });
 
+    if (approval.needsUser) {
+      this.bus.emit('task:approval-needed', {
+        taskId: crypto.randomUUID(),
+        question: approval.reason ?? `${toolCall.name} needs your approval before it can run.`,
+        options: ['approve', 'deny'],
+      });
+    }
+
+    if (approval.verdict === 'needs_user') {
+      return {
+        error: approval.reason ?? `${toolCall.name} needs user approval before it can run.`,
+        needs_user: true,
+        consecutive_denials: approval.consecutiveDenials,
+      };
+    }
+
     if (approval.verdict === 'denied') {
-      return { error: `Action denied: ${toolCall.name} is currently disabled.` };
+      return {
+        error: approval.reason ?? `Action denied: ${toolCall.name} is currently disabled.`,
+        needs_user: approval.needsUser,
+        escalated: approval.escalated,
+        consecutive_denials: approval.consecutiveDenials,
+      };
     }
 
     const input = approval.modifiedInput ?? toolCall.input;

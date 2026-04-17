@@ -64,4 +64,51 @@ describe('ApprovalGate', () => {
     });
     expect(result.verdict).toBe('needs_user');
   });
+
+  it('escalates after repeated approval denials for the same tool', async () => {
+    const gate = new ApprovalGate({}, 'approve', { maxConsecutiveDenials: 2 });
+
+    const first = await gate.check({
+      taskId: '1', toolName: 'email.send',
+      toolInput: { to: 'someone@test.com' },
+      description: 'Send email', level: 'approve',
+    });
+    const second = await gate.check({
+      taskId: '2', toolName: 'email.send',
+      toolInput: { to: 'someone@test.com' },
+      description: 'Send email', level: 'approve',
+    });
+
+    expect(first.verdict).toBe('needs_user');
+    expect(first.consecutiveDenials).toBe(1);
+    expect(second.verdict).toBe('denied');
+    expect(second.escalated).toBe(true);
+    expect(second.needsUser).toBe(true);
+    expect(second.reason).toContain('Stop retrying');
+  });
+
+  it('resets denial tracking after an approved run', async () => {
+    const gate = new ApprovalGate({}, 'approve', { maxConsecutiveDenials: 2 });
+
+    const denied = await gate.check({
+      taskId: '1', toolName: 'browser.click',
+      toolInput: { selector: '#submit' },
+      description: 'Click button', level: 'approve',
+    });
+    const approved = await gate.check({
+      taskId: '2', toolName: 'browser.click',
+      toolInput: { selector: '#submit' },
+      description: 'Click button', level: 'auto',
+    });
+    const deniedAgain = await gate.check({
+      taskId: '3', toolName: 'browser.click',
+      toolInput: { selector: '#submit' },
+      description: 'Click button', level: 'approve',
+    });
+
+    expect(denied.consecutiveDenials).toBe(1);
+    expect(approved.verdict).toBe('approved');
+    expect(deniedAgain.verdict).toBe('needs_user');
+    expect(deniedAgain.consecutiveDenials).toBe(1);
+  });
 });
