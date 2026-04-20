@@ -90,7 +90,26 @@ export class MemoryCapability implements Capability {
           this.procedureStore.incrementUsage(viable.id);
           return ok({
             title: `Procedure: ${viable.name}`,
-            output: { found: true, name: viable.name, steps: viable.steps, usedCount: viable.usedCount },
+            output: { found: true, id: viable.id, name: viable.name, steps: viable.steps, usedCount: viable.usedCount },
+          });
+        },
+      },
+      {
+        name: 'memory.procedures.forget',
+        description: 'Mark a procedure as unhelpful. After enough demerits, it will be skipped on recall. Use this when a recalled procedure led you astray.',
+        parameters: z.object({
+          id: z.string().describe('The procedure id from memory.procedures'),
+        }),
+        isReadOnly: false,
+        approvalLevel: 'auto' as const,
+        handler: async (input: Record<string, unknown>) => {
+          if (!this.procedureStore) {
+            return ok({ title: 'No procedure store', output: { demerited: false } });
+          }
+          const demerited = this.procedureStore.demerit(input.id as string);
+          return ok({
+            title: demerited ? 'Procedure demerited' : 'Procedure not found',
+            output: { demerited },
           });
         },
       },

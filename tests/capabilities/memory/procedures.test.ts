@@ -103,6 +103,7 @@ describe('memory.procedures recall', () => {
       createdAt: new Date(),
       usedCount: 3,
       lastUsedAt: new Date(),
+      demerits: 0,
     });
     store.close();
 
@@ -122,5 +123,48 @@ describe('memory.procedures recall', () => {
       expect(out.found).toBe(true);
       expect(out.steps).toEqual(['browser.navigate', 'browser.click', 'browser.extract']);
     }
+  });
+
+  it('memory.procedures.forget demerits a procedure and eventually excludes it from recall', async () => {
+    const store = new ProcedureStore(paths.procs);
+    store.save({
+      id: 'bad',
+      name: 'misleading-procedure',
+      trigger: 'do the thing',
+      steps: ['browser.navigate'],
+      createdAt: new Date(),
+      usedCount: 10,
+      lastUsedAt: new Date(),
+      demerits: 0,
+    });
+    store.close();
+
+    const registry = new CapabilityRegistry();
+    registry.register(makeCap('browser', [makeTool('browser.navigate')]));
+
+    const recall = cap.tools.find(t => t.name === 'memory.procedures')!;
+    const forget = cap.tools.find(t => t.name === 'memory.procedures.forget')!;
+    const ctx = makeCtx(registry);
+
+    // First recall: should find it.
+    const first = await recall.handler({ query: 'do the thing' }, ctx);
+    expect(first.ok && (first.value.output as any).found).toBe(true);
+
+    // Demerit it twice (threshold is 2: demerits < 2 is visible, so 2 hides it).
+    const d1 = await forget.handler({ id: 'bad' });
+    expect(d1.ok && (d1.value.output as any).demerited).toBe(true);
+    const d2 = await forget.handler({ id: 'bad' });
+    expect(d2.ok && (d2.value.output as any).demerited).toBe(true);
+
+    // Recall again: should now be excluded.
+    const third = await recall.handler({ query: 'do the thing' }, ctx);
+    expect(third.ok && (third.value.output as any).found).toBe(false);
+  });
+
+  it('memory.procedures.forget reports false for an unknown id', async () => {
+    const forget = cap.tools.find(t => t.name === 'memory.procedures.forget')!;
+    const result = await forget.handler({ id: 'does-not-exist' });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect((result.value.output as any).demerited).toBe(false);
   });
 });
