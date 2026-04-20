@@ -24,7 +24,7 @@ export interface EventMap {
   'agent-task:message': { taskId: string; from: string; message: string };
 }
 
-type EventHandler<T> = (payload: T) => void;
+type EventHandler<T> = (payload: T) => void | Promise<void>;
 
 export interface EventRecord {
   event: string;
@@ -47,7 +47,7 @@ export class ShrimpEventBus {
   once<K extends keyof EventMap>(event: K, handler: EventHandler<EventMap[K]>): void {
     const wrapper: EventHandler<EventMap[K]> = (payload) => {
       this.off(event, wrapper);
-      handler(payload);
+      return handler(payload);
     };
     this.on(event, wrapper);
   }
@@ -63,14 +63,27 @@ export class ShrimpEventBus {
     }
 
     const handlers = this.listeners.get(event);
-    if (handlers) {
-      for (const handler of handlers) {
-        handler(payload);
+    if (!handlers) return;
+
+    // Snapshot so listeners added/removed during iteration don't affect this emit.
+    for (const handler of Array.from(handlers)) {
+      try {
+        const result = handler(payload);
+        if (result && typeof (result as Promise<void>).catch === 'function') {
+          (result as Promise<void>).catch(err => this.reportHandlerError(event, err));
+        }
+      } catch (err) {
+        this.reportHandlerError(event, err);
       }
     }
   }
 
   getHistory(): EventRecord[] {
     return this.history;
+  }
+
+  private reportHandlerError(event: string, err: unknown): void {
+    const message = err instanceof Error ? `${err.message}\n${err.stack}` : String(err);
+    console.error(`[ShrimpEventBus] handler for "${event}" threw:`, message);
   }
 }
