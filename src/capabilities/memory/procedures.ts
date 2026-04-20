@@ -37,11 +37,19 @@ export class ProcedureStore {
   }
 
   findByTrigger(query: string): Procedure | undefined {
-    const row = this.db.query(
-      'SELECT * FROM procedures WHERE trigger LIKE ? ORDER BY usedCount DESC LIMIT 1',
-    ).get(`%${query}%`) as any;
-    if (!row) return undefined;
-    return { ...row, steps: JSON.parse(row.steps), createdAt: new Date(row.createdAt), lastUsedAt: new Date(row.lastUsedAt) };
+    return this.findCandidatesByTrigger(query, 1)[0];
+  }
+
+  findCandidatesByTrigger(query: string, limit = 5): Procedure[] {
+    const rows = this.db.query(
+      'SELECT * FROM procedures WHERE trigger LIKE ? ORDER BY usedCount DESC LIMIT ?',
+    ).all(`%${query}%`, limit) as any[];
+    return rows.map(row => ({
+      ...row,
+      steps: JSON.parse(row.steps),
+      createdAt: new Date(row.createdAt),
+      lastUsedAt: new Date(row.lastUsedAt),
+    }));
   }
 
   incrementUsage(id: string): void {

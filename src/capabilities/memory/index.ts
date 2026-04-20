@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { Capability, Tool, MemoryEntry } from '../../core/types';
+import type { Capability, Tool, MemoryEntry, ToolUseContext } from '../../core/types';
 import { ok } from '../../core/types';
 import { WorkingMemory } from './working';
 import { SQLiteMemoryStore } from './sqlite-store';
@@ -78,16 +78,19 @@ export class MemoryCapability implements Capability {
         parameters: z.object({ query: z.string().describe('What kind of task to look up') }),
         isReadOnly: true,
         approvalLevel: 'auto' as const,
-        handler: async (input: Record<string, unknown>) => {
+        handler: async (input: Record<string, unknown>, ctx?: ToolUseContext) => {
           if (!this.procedureStore) {
             return ok({ title: 'No procedure store', output: { found: false } });
           }
-          const proc = this.procedureStore.findByTrigger(input.query as string);
-          if (!proc) return ok({ title: 'No procedure found', output: { found: false } });
-          this.procedureStore.incrementUsage(proc.id);
+          const candidates = this.procedureStore.findCandidatesByTrigger(input.query as string);
+          const viable = candidates.find(proc =>
+            proc.steps.every(name => ctx?.registry.resolveTool(name) !== undefined),
+          );
+          if (!viable) return ok({ title: 'No procedure found', output: { found: false } });
+          this.procedureStore.incrementUsage(viable.id);
           return ok({
-            title: `Procedure: ${proc.name}`,
-            output: { found: true, name: proc.name, steps: proc.steps, usedCount: proc.usedCount },
+            title: `Procedure: ${viable.name}`,
+            output: { found: true, name: viable.name, steps: viable.steps, usedCount: viable.usedCount },
           });
         },
       },
