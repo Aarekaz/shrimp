@@ -65,7 +65,13 @@ class SubAgent {
     return !hasRules;
   }
 
-  async run(task: string, allTools?: Tool[], pendingMessages?: () => string[], parentPromptPrefix?: string): Promise<string> {
+  async run(
+    task: string,
+    ctx?: ToolUseContext,
+    allTools?: Tool[],
+    pendingMessages?: () => string[],
+    parentPromptPrefix?: string,
+  ): Promise<string> {
     const tools = allTools ? this.filterTools(allTools) : this.filterTools(this.tools);
     const systemContent = parentPromptPrefix
       ? `${parentPromptPrefix}\n\n---\nSub-agent instructions:\n${this.systemPrompt}`
@@ -112,8 +118,39 @@ class SubAgent {
           continue;
         }
 
+        // Route through the same approval gate the parent uses. A sub-agent
+        // must not be a way around the owner's approval policy.
+        if (ctx?.gate) {
+          const approval = await ctx.gate.check({
+            taskId: crypto.randomUUID(),
+            toolName: tool.name,
+            toolInput: toolCall.input,
+            description: `[sub-agent ${this.name}] ${tool.name}(${JSON.stringify(toolCall.input)})`,
+            level: tool.approvalLevel,
+          });
+          if (approval.verdict === 'denied') {
+            const reasonText = approval.reason === 'needs_user'
+              ? 'requires user approval (sub-agents cannot prompt the user)'
+              : 'is disabled by policy';
+            messages.push({
+              role: 'tool',
+              content: JSON.stringify({ error: `Denied: ${tool.name} ${reasonText}.` }),
+              toolCallId: toolCall.id,
+            });
+            continue;
+          }
+        } else if (tool.approvalLevel !== 'auto') {
+          // No gate wired: fail closed for anything that isn't auto-approved.
+          messages.push({
+            role: 'tool',
+            content: JSON.stringify({ error: `Denied: ${tool.name} requires an approval gate but none is configured for this sub-agent.` }),
+            toolCallId: toolCall.id,
+          });
+          continue;
+        }
+
         try {
-          const result = await tool.handler(toolCall.input);
+          const result = await tool.handler(toolCall.input, ctx);
           messages.push({
             role: 'tool',
             content: JSON.stringify(result.ok ? result.value : result.error),
@@ -186,6 +223,7 @@ export class AgentsCapability implements Capability {
           // Fire and forget — runs in background
           const promise = agent.run(
             taskPrompt,
+            ctx,
             allTools,
             () => this.taskManager.consumeMessages(agentTask.id),
             sharedPrefix,
@@ -235,7 +273,7 @@ export class AgentsCapability implements Capability {
           const allTools = ctx?.registry.allTools();
           const sharedPrefix = `You are a sub-agent of ${ctx?.identity.name}, working for ${ctx?.identity.owner}.`;
           try {
-            const result = await agent.run(taskPrompt, allTools, undefined, sharedPrefix);
+            const result = await agent.run(taskPrompt, ctx, allTools, undefined, sharedPrefix);
             return ok({ title: `Agent: ${agentName}`, output: { agent: agentName, result } });
           } catch (e: any) {
             return err({ code: 'AGENT_ERROR', message: `Agent failed: ${e.message}`, retryable: true });

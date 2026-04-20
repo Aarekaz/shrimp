@@ -127,6 +127,7 @@ export interface ApprovalResult {
 export interface ToolUseContext {
   bus: import('./events').ShrimpEventBus;
   registry: import('./registry').CapabilityRegistry;
+  gate: import('./approval').ApprovalGate;
   model: ModelAdapter;
   identity: { name: string; owner: string };
   sessionId?: string;

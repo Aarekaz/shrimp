@@ -263,6 +263,7 @@ export class AgentLoop {
     return {
       bus: this.bus,
       registry: this.registry,
+      gate: this.gate,
       model: this.model,
       identity: this.identity,
       sessionId: this.sessionId,
