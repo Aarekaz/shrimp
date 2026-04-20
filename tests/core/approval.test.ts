@@ -55,13 +55,48 @@ describe('ApprovalGate', () => {
     expect(result.verdict).toBe('approved');
   });
 
-  it('returns "needs_user" for approve-level tools', async () => {
+  it('denies approve-level tools with reason "needs_user" when no interactive approver is wired', async () => {
     const gate = new ApprovalGate({}, 'approve');
     const result = await gate.check({
       taskId: '1', toolName: 'email.send',
       toolInput: { to: 'someone@test.com' },
       description: 'Send email', level: 'approve',
     });
-    expect(result.verdict).toBe('needs_user');
+    expect(result.verdict).toBe('denied');
+    expect(result.reason).toBe('needs_user');
+  });
+
+  it('calls the interactive approver for approve-level tools and honors approval', async () => {
+    const approver = async () => 'approved' as const;
+    const gate = new ApprovalGate({}, 'approve', approver);
+    const result = await gate.check({
+      taskId: '1', toolName: 'email.send',
+      toolInput: { to: 'someone@test.com' },
+      description: 'Send email', level: 'approve',
+    });
+    expect(result.verdict).toBe('approved');
+  });
+
+  it('respects an interactive approver that denies', async () => {
+    const approver = async () => 'denied' as const;
+    const gate = new ApprovalGate({}, 'approve', approver);
+    const result = await gate.check({
+      taskId: '1', toolName: 'email.send',
+      toolInput: { to: 'someone@test.com' },
+      description: 'Send email', level: 'approve',
+    });
+    expect(result.verdict).toBe('denied');
+    expect(result.reason).toBe('needs_user');
+  });
+
+  it('tags never-level denials with reason "never"', async () => {
+    const gate = new ApprovalGate({}, 'auto');
+    const result = await gate.check({
+      taskId: '1', toolName: 'payments.charge',
+      toolInput: { amount: 100 },
+      description: 'Charge', level: 'never',
+    });
+    expect(result.verdict).toBe('denied');
+    expect(result.reason).toBe('never');
   });
 });

@@ -129,6 +129,42 @@ describe('AgentLoop', () => {
     expect(done.content).toBe('Hello!');
   });
 
+  it('emits task:approval-needed and denies when an approve-level tool has no interactive approver', async () => {
+    const bus = new ShrimpEventBus();
+    const registry = new CapabilityRegistry();
+    const gate = new ApprovalGate({}, 'approve');
+
+    const handler = mock(async () => ok({ title: 'sent', output: { sent: true } }));
+    const cap: Capability = {
+      name: 'email',
+      description: 'Email',
+      tools: [{
+        name: 'email.send',
+        description: 'Send an email',
+        parameters: z.object({ to: z.string() }),
+        approvalLevel: 'approve',
+        handler,
+      }],
+      async start() {},
+      async stop() {},
+    };
+    registry.register(cap);
+
+    const approvalNeeded = mock(() => {});
+    bus.on('task:approval-needed', approvalNeeded);
+
+    const model = createMockModel([
+      { content: '', toolCalls: [{ id: 'c1', name: 'email.send', input: { to: 'a@b.com' } }], usage: { inputTokens: 5, outputTokens: 5 } },
+      { content: 'Could not send.', usage: { inputTokens: 5, outputTokens: 5 } },
+    ]);
+
+    const loop = new AgentLoop({ bus, registry, gate, model, identity: { name: 'Shrimp', owner: 'test' } });
+    await loop.handleMessage('Email someone');
+
+    expect(approvalNeeded).toHaveBeenCalledTimes(1);
+    expect(handler).not.toHaveBeenCalled();
+  });
+
   it('run() yields tool-call and tool-result events', async () => {
     const bus = new ShrimpEventBus();
     const registry = new CapabilityRegistry();

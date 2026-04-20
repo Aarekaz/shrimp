@@ -1,16 +1,21 @@
 import type { ApprovalLevel, ApprovalRequest } from './types';
 
-export type GateVerdict = 'approved' | 'denied' | 'needs_user';
+export type GateVerdict = 'approved' | 'denied';
+export type DenialReason = 'never' | 'needs_user';
 
 export interface GateResult {
   verdict: GateVerdict;
   modifiedInput?: Record<string, unknown>;
+  reason?: DenialReason;
 }
+
+export type InteractiveApprovalFn = (request: ApprovalRequest) => Promise<GateVerdict>;
 
 export class ApprovalGate {
   constructor(
     private overrides: Record<string, ApprovalLevel>,
     private defaultLevel: ApprovalLevel,
+    private interactive?: InteractiveApprovalFn,
   ) {}
 
   async check(request: ApprovalRequest): Promise<GateResult> {
@@ -18,13 +23,18 @@ export class ApprovalGate {
 
     switch (effectiveLevel) {
       case 'auto':
-        return { verdict: 'approved' };
       case 'notify':
         return { verdict: 'approved' };
       case 'never':
-        return { verdict: 'denied' };
+        return { verdict: 'denied', reason: 'never' };
       case 'approve':
-        return { verdict: 'needs_user' };
+        if (this.interactive) {
+          const verdict = await this.interactive(request);
+          return verdict === 'approved'
+            ? { verdict: 'approved' }
+            : { verdict: 'denied', reason: 'needs_user' };
+        }
+        return { verdict: 'denied', reason: 'needs_user' };
     }
   }
 

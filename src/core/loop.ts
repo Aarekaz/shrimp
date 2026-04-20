@@ -211,8 +211,9 @@ export class AgentLoop {
       return { error: `Unknown tool: ${toolCall.name}` };
     }
 
+    const approvalTaskId = crypto.randomUUID();
     const approval = await this.gate.check({
-      taskId: crypto.randomUUID(),
+      taskId: approvalTaskId,
       toolName: toolCall.name,
       toolInput: toolCall.input,
       description: `${toolCall.name}(${JSON.stringify(toolCall.input)})`,
@@ -220,6 +221,14 @@ export class AgentLoop {
     });
 
     if (approval.verdict === 'denied') {
+      if (approval.reason === 'needs_user') {
+        this.bus.emit('task:approval-needed', {
+          taskId: approvalTaskId,
+          question: `Approve ${toolCall.name}(${JSON.stringify(toolCall.input)})?`,
+          options: ['approve', 'deny'],
+        });
+        return { error: `Action denied: ${toolCall.name} requires user approval and no interactive approver is configured.` };
+      }
       return { error: `Action denied: ${toolCall.name} is currently disabled.` };
     }
 
