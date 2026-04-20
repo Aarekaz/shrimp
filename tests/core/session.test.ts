@@ -77,6 +77,27 @@ describe('SessionStore', () => {
     store2.close();
   });
 
+  it('replaceMessages swaps the stored transcript for a compacted view', () => {
+    const store = new SessionStore(TEST_DB);
+    const session = store.create('Compaction test');
+    store.addMessage(session.id, { role: 'user', content: 'first' });
+    store.addMessage(session.id, { role: 'assistant', content: 'one' });
+    store.addMessage(session.id, { role: 'user', content: 'second' });
+    store.addMessage(session.id, { role: 'assistant', content: 'two' });
+
+    store.replaceMessages(session.id, [
+      { role: 'system', content: '[Summary] earlier conversation summarized' },
+      { role: 'user', content: 'third' },
+    ]);
+
+    const messages = store.getMessages(session.id);
+    expect(messages.length).toBe(2);
+    expect(messages[0].role).toBe('system');
+    expect(messages[0].content).toContain('Summary');
+    expect(messages[1].content).toBe('third');
+    store.close();
+  });
+
   it('retrieves a session by id', () => {
     const store = new SessionStore(TEST_DB);
     const created = store.create('Lookup test');

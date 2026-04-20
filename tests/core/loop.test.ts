@@ -1,11 +1,21 @@
-import { describe, it, expect, mock } from 'bun:test';
+import { describe, it, expect, mock, afterEach } from 'bun:test';
+import { unlinkSync, existsSync } from 'fs';
 import { z } from 'zod';
 import { AgentLoop } from '../../src/core/loop';
 import { ShrimpEventBus } from '../../src/core/events';
 import { CapabilityRegistry } from '../../src/core/registry';
 import { ApprovalGate } from '../../src/core/approval';
+import { SessionStore } from '../../src/core/session';
 import type { ModelAdapter, ModelResponse, ModelChunk, LLMTool, Message, Capability, LoopEvent } from '../../src/core/types';
 import { ok } from '../../src/core/types';
+
+const LOOP_TEST_DB = './data/test-loop-sessions.db';
+afterEach(() => {
+  for (const suffix of ['', '-shm', '-wal']) {
+    const p = LOOP_TEST_DB + suffix;
+    if (existsSync(p)) { try { unlinkSync(p); } catch {} }
+  }
+});
 
 function createMockModel(responses: ModelResponse[]): ModelAdapter {
   let callCount = 0;
@@ -163,6 +173,47 @@ describe('AgentLoop', () => {
 
     expect(approvalNeeded).toHaveBeenCalledTimes(1);
     expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('persists compacted context to the session when the context window overflows', async () => {
+    const bus = new ShrimpEventBus();
+    const registry = new CapabilityRegistry();
+    const gate = new ApprovalGate({}, 'auto');
+    const sessionStore = new SessionStore(LOOP_TEST_DB);
+
+    // Feed the loop enough turns that older messages exist beyond keepRecentCount.
+    const model = createMockModel(
+      Array(8).fill({ content: 'short reply', usage: { inputTokens: 1, outputTokens: 1 } }),
+    );
+
+    const loop = new AgentLoop({
+      bus,
+      registry,
+      gate,
+      model,
+      identity: { name: 'Shrimp', owner: 'test' },
+      sessionStore,
+      maxContextTokens: 20,
+    });
+
+    // 5 turns = 10 messages > keepRecentCount (6) → compaction triggers.
+    for (let i = 0; i < 5; i++) {
+      await loop.handleMessage(`long user message number ${i} with padding to push tokens `.repeat(3));
+    }
+
+    const history = loop.getHistory();
+    expect(history[0].role).toBe('system');
+    expect(history[0].content).toContain('Summary');
+
+    // Persisted view should match the compacted in-memory history.
+    const sessions = sessionStore.list();
+    expect(sessions.length).toBeGreaterThan(0);
+    const persisted = sessionStore.getMessages(sessions[0].id);
+    expect(persisted[0].role).toBe('system');
+    expect(persisted[0].content).toContain('Summary');
+    expect(persisted.length).toBe(history.length);
+
+    sessionStore.close();
   });
 
   it('run() yields tool-call and tool-result events', async () => {

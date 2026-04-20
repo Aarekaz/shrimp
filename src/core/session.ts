@@ -75,6 +75,23 @@ export class SessionStore {
     });
   }
 
+  // Replace the session's persisted messages with a new list. Used by the loop
+  // after compaction so a resumed session doesn't re-summarize from raw history.
+  replaceMessages(sessionId: string, messages: Message[]): void {
+    const tx = this.db.transaction((msgs: Message[]) => {
+      this.db.run('DELETE FROM messages WHERE sessionId = ?', [sessionId]);
+      for (const msg of msgs) {
+        const toolCalls = msg.toolCalls ? JSON.stringify(msg.toolCalls) : null;
+        this.db.run(
+          'INSERT INTO messages (sessionId, role, content, toolCallId, toolCalls) VALUES (?, ?, ?, ?, ?)',
+          [sessionId, msg.role, msg.content, msg.toolCallId ?? null, toolCalls],
+        );
+      }
+      this.db.run('UPDATE sessions SET updatedAt = ? WHERE id = ?', [new Date().toISOString(), sessionId]);
+    });
+    tx(messages);
+  }
+
   list(): Session[] {
     return this.db.query(
       'SELECT id, title, createdAt, updatedAt FROM sessions ORDER BY updatedAt DESC',

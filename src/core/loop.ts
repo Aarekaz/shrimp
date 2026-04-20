@@ -76,6 +76,15 @@ export class AgentLoop {
       iterations++;
 
       const fittedHistory = this.contextManager.fit(this.conversationHistory);
+      // fit() returns the same array reference when no compaction was needed.
+      // A different reference means it compacted — persist the new view so a
+      // resumed session doesn't re-summarize from the raw transcript.
+      if (fittedHistory !== this.conversationHistory) {
+        this.conversationHistory = fittedHistory;
+        if (this.sessionStore && this.sessionId) {
+          this.sessionStore.replaceMessages(this.sessionId, fittedHistory);
+        }
+      }
       const messages: Message[] = [
         { role: 'system', content: systemPrompt },
         ...fittedHistory,
