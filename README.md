@@ -19,7 +19,7 @@ Set up a model (pick one):
 # Google Gemini (free, fast, recommended for testing)
 echo "GEMINI_API_KEY=your-key" >> .env
 
-# Or OpenRouter (free models available)
+# Or OpenRouter (defaults to Kimi K2.6 — strong agentic tool use, cheap)
 echo "OPENROUTER_API_KEY=your-key" >> .env
 
 # Or OpenAI, Groq, any OpenAI-compatible provider
@@ -103,7 +103,7 @@ Everything is optional except a model API key.
 ```bash
 # Model (pick one, auto-detected in this order)
 GEMINI_API_KEY=...              # Google Gemini
-OPENROUTER_API_KEY=...          # OpenRouter (free models)
+OPENROUTER_API_KEY=...          # OpenRouter (default: moonshotai/kimi-k2.6)
 MINIMAX_API_KEY=...             # MiniMax M2.7
 OPENAI_API_KEY=...              # OpenAI
 GROQ_API_KEY=...                # Groq

@@ -3,7 +3,7 @@ import type { ShrimpConfig } from './schema';
 // Well-known provider presets
 const PROVIDERS: Record<string, { baseUrl: string; model: string; envKey: string }> = {
   gemini:     { baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.5-flash', envKey: 'GEMINI_API_KEY' },
-  openrouter: { baseUrl: 'https://openrouter.ai/api/v1', model: 'nvidia/nemotron-nano-9b-v2:free', envKey: 'OPENROUTER_API_KEY' },
+  openrouter: { baseUrl: 'https://openrouter.ai/api/v1', model: 'moonshotai/kimi-k2.6', envKey: 'OPENROUTER_API_KEY' },
   minimax:    { baseUrl: 'https://api.minimax.chat/v1', model: 'minimax-m2.7', envKey: 'MINIMAX_API_KEY' },
   openai:     { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o', envKey: 'OPENAI_API_KEY' },
   groq:       { baseUrl: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile', envKey: 'GROQ_API_KEY' },
