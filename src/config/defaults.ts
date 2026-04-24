@@ -59,6 +59,7 @@ export const defaultConfig: ShrimpConfig = {
     model: detected.model,
     apiKey: detected.apiKey,
     baseUrl: detected.baseUrl,
+    maxTokens: process.env.SHRIMP_MAX_TOKENS ? Number(process.env.SHRIMP_MAX_TOKENS) : undefined,
   },
   memory: {
     path: './data',

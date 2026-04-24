@@ -7,7 +7,10 @@ export interface OpenAICompatibleConfig {
   apiKey: string;
   model: string;
   baseUrl: string;
+  maxTokens?: number;
 }
+
+const DEFAULT_MAX_TOKENS = 4096;
 
 function parseErrorMessage(status: number, body: string): string {
   try {
@@ -50,6 +53,7 @@ export class OpenAICompatibleAdapter implements ModelAdapter {
     const body: Record<string, unknown> = {
       model: this.config.model,
       messages: messages.map(m => this.toOpenAIMessage(m)),
+      max_tokens: this.config.maxTokens ?? DEFAULT_MAX_TOKENS,
     };
 
     if (tools && tools.length > 0) {
@@ -118,6 +122,7 @@ export class OpenAICompatibleAdapter implements ModelAdapter {
     const body: Record<string, unknown> = {
       model: this.config.model,
       messages: messages.map(m => this.toOpenAIMessage(m)),
+      max_tokens: this.config.maxTokens ?? DEFAULT_MAX_TOKENS,
       stream: true,
     };
 

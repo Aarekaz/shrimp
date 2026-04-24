@@ -53,6 +53,7 @@ export async function createShrimpServer(): Promise<ShrimpServer> {
     apiKey: config.model.apiKey,
     model: config.model.model,
     baseUrl: config.model.baseUrl ?? '',
+    maxTokens: config.model.maxTokens,
   });
 
   // Memory — use SuperMemory if API key available, otherwise fall back to in-memory

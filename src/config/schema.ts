@@ -6,6 +6,7 @@ export interface ShrimpConfig {
     model: string;
     apiKey: string;
     baseUrl?: string;
+    maxTokens?: number;
   };
   memory: {
     path: string;
