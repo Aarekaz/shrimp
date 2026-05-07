@@ -181,6 +181,19 @@ export class AgentsCapability implements Capability {
     this.agents.set(config.name, new SubAgent(config));
   }
 
+  hasAgent(name: string): boolean {
+    return this.agents.has(name);
+  }
+
+  // Server-side entrypoint for firing a sub-agent outside an LLM tool call
+  // (e.g. cron-driven automations). Returns the sub-agent's final reply.
+  async runByName(name: string, task: string, ctx: ToolUseContext): Promise<string> {
+    const agent = this.agents.get(name);
+    if (!agent) throw new Error(`No agent "${name}"`);
+    const sharedPrefix = `You are a sub-agent of ${ctx.identity.name}, working for ${ctx.identity.owner}.`;
+    return agent.run(task, ctx, ctx.registry.allTools(), undefined, sharedPrefix);
+  }
+
   get tools(): Tool[] {
     return [
       {

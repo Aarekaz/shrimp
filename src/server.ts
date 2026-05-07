@@ -9,6 +9,7 @@ import { ComposioCapability } from './capabilities/composio/index';
 import { ComputerCapability } from './capabilities/computer/index';
 import { AgentsCapability } from './capabilities/agents/index';
 import { SchedulerCapability } from './capabilities/scheduler/index';
+import { AutomationsCapability } from './capabilities/automations/index';
 import { MCPCapability } from './capabilities/mcp/index';
 import { BrowserCapability } from './capabilities/browser/index';
 import { createDashboard } from './dashboard/server';
@@ -153,6 +154,12 @@ export async function createShrimpServer(): Promise<ShrimpServer> {
   await schedulerCap.start();
   console.log('  ⏰ Scheduler active');
 
+  // Automations — cron-driven sub-agent firings, persisted in shrimp.db
+  const automationsCap = new AutomationsCapability({ dbPath: process.env.SHRIMP_DB_PATH ?? 'shrimp.db' });
+  registry.register(automationsCap);
+  await automationsCap.start();
+  console.log('  🤖 Automations active');
+
   // MCP servers — load from env if configured
   const mcpServersJson = process.env.SHRIMP_MCP_SERVERS;
   if (mcpServersJson) {
@@ -186,6 +193,29 @@ export async function createShrimpServer(): Promise<ShrimpServer> {
   if (process.env.SHRIMP_COORDINATOR === 'true') {
     console.log('  🎯 Coordinator mode: ON (orchestrator-only)');
   }
+
+  // Wire automations → sub-agent dispatch. Runs as an isolated sub-agent so
+  // it doesn't share conversationHistory with the live user session.
+  const automationCtx = { bus, registry, gate, model, identity: config.identity };
+  automationsCap.attachContext(automationCtx);
+  bus.on('automation:fire', async (payload: { automationId: string; name: string; task: string }) => {
+    const agentName = 'researcher';
+    if (!agents.hasAgent(agentName)) {
+      bus.emit('agent:error', { message: `Automation "${payload.name}" fired but the "${agentName}" sub-agent is not registered.` });
+      return;
+    }
+    try {
+      const result = await agents.runByName(agentName, payload.task, automationCtx);
+      bus.emit('automation:completed', {
+        automationId: payload.automationId,
+        name: payload.name,
+        result: result.length > 1000 ? result.slice(0, 1000) + '…' : result,
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      bus.emit('automation:failed', { automationId: payload.automationId, name: payload.name, error: msg });
+    }
+  });
 
   // Dashboard — web UI
   const dashboardPort = parseInt(process.env.SHRIMP_DASHBOARD_PORT ?? '3737');
