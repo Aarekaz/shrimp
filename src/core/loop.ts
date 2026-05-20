@@ -236,9 +236,14 @@ export class AgentLoop {
           question: `Approve ${toolCall.name}(${JSON.stringify(toolCall.input)})?`,
           options: ['approve', 'deny'],
         });
-        return { error: `Action denied: ${toolCall.name} requires user approval and no interactive approver is configured.` };
       }
-      return { error: `Action denied: ${toolCall.name} is currently disabled.` };
+
+      return {
+        error: approval.denialMessage ?? `Action denied: ${toolCall.name} is currently disabled.`,
+        needs_user: approval.reason === 'needs_user',
+        escalated: approval.escalated,
+        consecutive_denials: approval.consecutiveDenials,
+      };
     }
 
     const input = approval.modifiedInput ?? toolCall.input;
