@@ -1,0 +1,38 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "shrimp-agent",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-20",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "routes": [
+    {
+      "pattern": "shrimp.anuragd.me",
+      "custom_domain": true
+    }
+  ],
+  "ai": {
+    "binding": "AI"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SHRIMP_AGENT",
+        "class_name": "ShrimpAgent"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["ShrimpAgent"]
+    }
+  ],
+  "vars": {
+    "SHRIMP_MODEL": "@cf/zai-org/glm-4.7-flash",
+    "SHRIMP_OWNER": "user",
+    "SHRIMP_MAX_ITERATIONS": "6",
+    "SHRIMP_FREE_MODE": "true"
+  }
+}

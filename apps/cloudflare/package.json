@@ -1,0 +1,22 @@
+{
+  "name": "@shrimp/cloudflare",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 8787",
+    "deploy": "wrangler deploy",
+    "dry-run": "wrangler deploy --dry-run",
+    "types": "wrangler types ./src/worker-configuration.d.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run types && npm run typecheck && npm run dry-run"
+  },
+  "dependencies": {
+    "agents": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "typescript": "latest",
+    "wrangler": "latest"
+  }
+}

@@ -3,6 +3,8 @@ dist/
 data/
 .env
 .env.local
+.dev.vars
+.wrangler/
 *.db
 *.db-journal
 claude_code_source/
